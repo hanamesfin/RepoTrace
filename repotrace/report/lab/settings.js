@@ -502,6 +502,20 @@
   function showBeforeProject() {
     var content = document.getElementById('content');
     if (!content) return;
+    var loc = document.getElementById('location');
+    if (loc) loc.textContent = 'Settings';
+    var back = document.getElementById('back');
+    if (back) back.disabled = false;
+    var topSettings = document.getElementById('top-settings');
+    if (topSettings) {
+      topSettings.classList.add('active');
+      topSettings.setAttribute('aria-current', 'page');
+    }
+    var navSettings = document.querySelector('#navigation [data-action="settings"]');
+    if (navSettings) {
+      navSettings.classList.add('active');
+      navSettings.setAttribute('aria-current', 'page');
+    }
     content.innerHTML = render({
       themeCards: themeCards(),
       gitHtml: '<p class="help-text">Open a project to connect GitHub and to read the local Git status. GitLab and Azure DevOps stay disconnected.</p>'
@@ -510,9 +524,17 @@
   }
 
   document.addEventListener('click', function (event) {
-    if (window.RTLab && RTLab.current) return;
     var target = event.target && event.target.closest ? event.target : null;
     if (!target) return;
+    if (target.closest('.brand') || target.closest('[data-action="open-project"]') || target.closest('[data-action="open-file"]') || (target.closest('#back') && !target.closest('#back').disabled && document.getElementById('content') && document.getElementById('content').querySelector('.settings-shell') && (!window.RTLab || !RTLab.current))) {
+      if (document.getElementById('content') && document.getElementById('content').querySelector('.settings-shell')) {
+        if (window.RTPicker) {
+          window.RTPicker.start(window.RTLab);
+          return;
+        }
+      }
+    }
+    if (window.RTLab && RTLab.current) return;
     if (target.closest('[data-action="settings"]')) {
       showBeforeProject();
       return;

@@ -41,6 +41,7 @@
   };
   const fail = message => { const box = $('picker-error'); if (box) { box.textContent = message; box.hidden = false; box.scrollIntoView({block: 'nearest'}); } else failPage(message, 'Back', () => (root.PROTO ? root.RTLab(root.PROTO) : start(root.RTLab))); };
 
+  let currentBoot = null;
   let githubEpoch = 0;
   let githubTimer = 0;
   let githubSeen = {configured: false, signed_in: false, state: 'signed-out'};
@@ -185,12 +186,21 @@
   }
 
   function start(boot) {
+    currentBoot = boot;
     $('snapshot').textContent = 'Local · nothing is uploaded';
     $('location').textContent = 'Open a project';
-    $('navigation').innerHTML = '';
+    const navEl = $('navigation');
+    if (navEl) {
+      navEl.innerHTML = `<button class="nav-item" data-action="settings" title="Settings"><span class="nav-icon" aria-hidden="true">${ico('sliders')}</span><span class="nav-text">Settings</span></button>`;
+    }
     for (const id of ['project-card', 'rail-label']) { const el = $(id); if (el) el.hidden = true; }      // no project yet, so no project card
     document.querySelectorAll('[data-project]').forEach(el => { el.textContent = ''; });
     $('back').disabled = true;
+    const topSettings = $('top-settings');
+    if (topSettings) {
+      topSettings.classList.remove('active');
+      topSettings.removeAttribute('aria-current');
+    }
     stepOne(boot);
   }
 
@@ -429,9 +439,9 @@
         document.querySelectorAll('.recent-card.is-extra').forEach(card => { card.hidden = open; });
       });
       const tip = $('open-tip');
-      if (tip && localStorage.getItem('repotrace-open-tip') !== 'off') tip.hidden = false;
+      if (tip && !root._rtTipDismissed) tip.hidden = false;
       const closeTip = $('tip-close');
-      if (closeTip) closeTip.addEventListener('click', () => { tip.hidden = true; try { localStorage.setItem('repotrace-open-tip', 'off'); } catch (e) { /* the tip can stay dismissed for this view */ } });
+      if (closeTip) closeTip.addEventListener('click', () => { tip.hidden = true; root._rtTipDismissed = true; });
       document.querySelectorAll('[data-panel]').forEach(button => button.addEventListener('click', () => show(button.dataset.panel)));
       document.querySelectorAll('[data-path]').forEach(button => button.addEventListener('click', () => openCompare(button.dataset.path)));
       document.querySelectorAll('[data-ws-mini]').forEach(btn => btn.addEventListener('click', () => openWorkspace(btn.dataset.wsMini)));
@@ -660,5 +670,13 @@
       } catch (e) { fail(e.message); }
     })();
   }
+  document.addEventListener('click', ev => {
+    const brand = ev.target.closest('.brand');
+    if (brand && (!root.RTLab || !root.RTLab.current || document.querySelector('.compact.picker'))) {
+      ev.preventDefault();
+      clearTimeout(githubTimer);
+      stepOne(currentBoot || root.RTLab);
+    }
+  });
   root.RTPicker = {start, run};
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -1132,6 +1132,11 @@ window.RTLab = (D) => {
       btn.classList.toggle('active',on);
       if(on)btn.setAttribute('aria-current','page'); else btn.removeAttribute('aria-current');
     });       // the explorer gets the whole width
+    const topSettings=$('top-settings');
+    if(topSettings){
+      topSettings.classList.toggle('active',s.page==='settings');
+      if(s.page==='settings')topSettings.setAttribute('aria-current','page'); else topSettings.removeAttribute('aria-current');
+    }
   }
   let toastTimer;
   function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000);}
@@ -1144,10 +1149,15 @@ window.RTLab = (D) => {
   document.addEventListener('repotrace-settings-refresh',()=>{ if(state().page==='settings') render(); },{signal:ac.signal});
   document.addEventListener('click',event=>{
     if(!event.target.closest('.report-menu')) document.querySelectorAll('.report-formats').forEach(menu=>{ menu.hidden=true; const launch=menu.parentElement&&menu.parentElement.querySelector('[data-action="export-report"]'); if(launch) launch.setAttribute('aria-expanded','false'); });
+    const brand=event.target.closest('.brand');
+    if(brand){
+      if(window.RTPicker) window.RTPicker.start(window.RTLab);
+      return;
+    }
     const button=event.target.closest('[data-action]');if(!button||button.disabled||busy())return;
     const action=button.dataset.action;
     if(action==='start')start();
-    else if(action==='open-project'){if(window.RTPicker)window.RTPicker.start(window.RTLab);}
+    else if(action==='open-project'||action==='open-file'){if(window.RTPicker)window.RTPicker.start(window.RTLab);}
     else if(action==='back')back();
     else if(action==='find')openPalette();
     else if(action==='email'){openMap(null,{query:walk?walk.q:'',graph:'main',review:null,walk:true});}

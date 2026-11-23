@@ -41,14 +41,14 @@
   <a class="skip" href="#content">Skip to workspace</a>
   <div class="shell">
     <aside class="rail" aria-label="Project navigation">
-      <button class="brand" data-action="start" aria-label="RepoTrace home"><img src="/lab/icon.svg" alt="" width="30" height="30">RepoTrace<span>LAB</span></button>
+      <button class="brand" data-action="open-project" aria-label="Open project or file" title="Open project or file"><img src="/lab/icon.svg" alt="RepoTrace" width="30" height="30" class="brand-logo"><span class="brand-text">RepoTrace<span>LAB</span></span></button>
       <div class="project" id="project-card"><span class="project-icon" id="project-icon">·</span><div><strong data-project>…</strong><span id="project-sub">Python project</span></div></div>
       <div class="rail-label" id="rail-label">WORKSPACE</div>
       <nav id="navigation"></nav>
       <div class="rail-bottom"><span class="live-dot"></span> <span id="rail-title">RepoTrace</span><p id="rail-note">Nothing is uploaded.<br>No repository is changed.</p><button class="text-button" data-action="about">What works here? <span aria-hidden="true">↗</span></button></div>
     </aside>
     <div class="workspace">
-      <header class="topbar"><div class="nav-tools"><button id="back" class="icon-button" data-action="back" aria-label="Back to previous view" title="Back (Alt + Left)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-back"/></svg></button><span id="location">Start</span></div><div class="top-right"><span class="snapshot" id="snapshot"></span><button class="search-shortcut" data-action="find" aria-label="Find code (Command or Control K)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span>Find code</span><kbd>⌘ K</kbd></button></div></header>
+      <header class="topbar"><div class="nav-tools"><button id="back" class="icon-button" data-action="back" aria-label="Back to previous view" title="Back (Alt + Left)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-back"/></svg></button><span id="location">Start</span></div><div class="top-right"><span class="snapshot" id="snapshot"></span><button class="search-shortcut" data-action="find" aria-label="Find code (Command or Control K)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span>Find code</span><kbd>⌘ K</kbd></button><button class="icon-button" data-action="settings" id="top-settings" aria-label="Settings" title="Settings"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg></button></div></header>
       <main id="content" tabindex="-1"></main>
       <footer class="statusbar"><span><i></i> <span data-project>…</span> <span class="dim">/</span> <span id="status-context">Open a project</span></span><button class="text-button" data-action="about">Static analysis · not runtime proof</button></footer>
     </div>
