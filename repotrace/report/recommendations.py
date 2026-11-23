@@ -121,7 +121,7 @@ def build_recommendations(review):
     removed = _rows(review, 'removed_tests')
     history = _rows(review, 'history')
     unresolved = _rows(review, 'unresolved')
-    covered_indexes, covered_names = _covered(tests, removed)
+    covered_indexes, covered_names = _covered(tests + _rows(review, 'tests_outside'), removed)
     items = []
 
     concern_rows, concern_rest = _cap(concerns, _MAX['concern'])
@@ -526,6 +526,173 @@ def _note_more(items, rest, describe):
 def _item_id(kind, extra):
     raw = kind + '|' + '|'.join('' if part is None else str(part) for part in extra)
     return kind + '-' + hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12]
+
+
+DOES_NOT_PROVE = (
+    'A listed test is not coverage. A missing test is not proof the code is untested.'
+)
+
+
+def tests_to_run_first(review):
+    """Tests to run first, from the review's own tests, shortlist, and lost paths.
+
+    Priority is now when the recorded path exists only in the older version, or
+    when this is the only connected test of a changed definition. Soon means the
+    test is in the shortlist. Later means it is still connected and was left
+    outside that shortlist. Confidence is high only for a sure link and medium
+    for a maybe link. There is no numeric score. Lost-path items already emitted
+    by ``build_recommendations`` keep that item's priority and confidence.
+    """
+    review = review or {}
+    shortlist = _rows(review, 'tests')
+    outside = _rows(review, 'tests_outside')
+    recommendations = _rows(review, 'recommendations')
+    counts = _connection_counts(shortlist + outside)
+    suggestions = []
+    for test in shortlist:
+        suggestions.append(_test_suggestion(test, True, counts, recommendations))
+    for test in outside:
+        suggestions.append(_test_suggestion(test, False, counts, recommendations))
+    suggestions.sort(key=lambda row: ({'now': 0, 'soon': 1, 'later': 2}[row['priority']], row['file'], row['name']))
+    missing = []
+    for item in recommendations:
+        evidence = item.get('evidence') or {}
+        if evidence.get('kind') == 'no-test' and item.get('recommendation'):
+            missing.append(item['recommendation'])
+    return {'tests': suggestions, 'does_not_prove': DOES_NOT_PROVE, 'missing': missing}
+
+
+def _test_suggestion(test, in_shortlist, counts, recommendations):
+    lost = _lost(test)
+    only = _only_connected(test, counts)
+    reused = _matching_lost_recommendation(test, recommendations) if lost else None
+    certainty = 'sure' if _sure(test.get('tier')) else 'maybe'
+    confidence = confidence_for(certainty)
+    if lost or only:
+        priority = 'now'
+    elif in_shortlist:
+        priority = 'soon'
+    else:
+        priority = 'later'
+    if reused and reused.get('priority') in ('now', 'soon', 'later'):
+        priority = reused['priority']
+    reused_confidence = (reused or {}).get('confidence') or {}
+    if reused_confidence.get('level') in ('high', 'medium'):
+        confidence = {'level': reused_confidence['level'], 'basis': reused_confidence.get('basis') or confidence['basis']}
+    node = test.get('node')
+    if isinstance(node, bool) or not isinstance(node, int) or node < 0:
+        node = None
+    return {
+        'name': test.get('name') or '',
+        'file': test.get('file') or '',
+        'line': test.get('line'),
+        'why': _why_listed(test),
+        'priority': priority,
+        'priority_reason': _priority_reason(priority, lost, only),
+        'confidence': confidence,
+        'command': (test.get('run') or '').strip(),
+        'does_not_prove': DOES_NOT_PROVE,
+        'lost': lost,
+        'in_shortlist': bool(in_shortlist),
+        'node': node,
+    }
+
+
+def _connection_counts(tests):
+    counts = {}
+    for test in tests:
+        seen = set()
+        for reason in test.get('reasons') or []:
+            if not isinstance(reason, dict):
+                continue
+            key = reason.get('for')
+            if not key:
+                key = reason.get('change')
+            if key is None or key in seen:
+                continue
+            seen.add(key)
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _only_connected(test, counts):
+    reasons = [reason for reason in (test.get('reasons') or []) if isinstance(reason, dict)]
+    if not reasons:
+        return False
+    for reason in reasons:
+        key = reason.get('for') or reason.get('change')
+        if key is not None and counts.get(key) == 1:
+            return True
+    return False
+
+
+def _matching_lost_recommendation(test, recommendations):
+    name = test.get('name') or ''
+    file = test.get('file') or ''
+    if not name:
+        return None
+    for item in recommendations:
+        evidence = item.get('evidence') or {}
+        if evidence.get('kind') != 'lost-path':
+            continue
+        names = evidence.get('names') or []
+        files = evidence.get('files') or []
+        if name in names and (not file or not files or file in files):
+            return item
+    return None
+
+
+def _why_listed(test):
+    parts = []
+    if _lost(test):
+        parts.append('Lost path: the recorded connection is only in the older version.')
+    described = False
+    seen = set()
+    vias = []
+    top = test.get('via')
+    if isinstance(top, dict):
+        vias.append(top)
+    for reason in test.get('reasons') or []:
+        via = reason.get('via') if isinstance(reason, dict) else None
+        if isinstance(via, dict):
+            vias.append(via)
+    for via in vias:
+        mark = (via.get('kind'), via.get('name'))
+        if mark in seen:
+            continue
+        seen.add(mark)
+        name = via.get('name') or ''
+        if via.get('kind') == 'setup':
+            parts.append('Reached through {name}, a setUp hook the test runner calls.'.format(name=name or 'setUp'))
+            described = True
+        elif via.get('kind') == 'fixture':
+            auto = ' It is marked autouse.' if via.get('autouse') else ''
+            parts.append('Reached through the fixture {name}.{auto}'.format(name=name or 'a fixture', auto=auto))
+            described = True
+    if not described:
+        parts.append('Connected call: a recorded path reaches the changed code.')
+    targets = []
+    for reason in test.get('reasons') or []:
+        if isinstance(reason, dict) and reason.get('for') and reason['for'] not in targets:
+            targets.append(reason['for'])
+    if targets:
+        parts.append('Recorded for {names}.'.format(names=', '.join(str(name) for name in targets)))
+    chain = test.get('chain') or []
+    if chain:
+        parts.append('Path: {chain}.'.format(chain=' → '.join(str(part) for part in chain)))
+    return ' '.join(parts)
+
+
+def _priority_reason(priority, lost, only):
+    if priority == 'now' and lost and only:
+        return 'Now. The path was lost, and this is the only connected test of a changed definition.'
+    if priority == 'now' and lost:
+        return 'Now. The path was lost.'
+    if priority == 'now' and only:
+        return 'Now. This is the only connected test of a changed definition.'
+    if priority == 'soon':
+        return 'Soon. It is in the shortlist.'
+    return 'Later. It is outside the shortlist and still connected.'
 
 
 def _blob(item):

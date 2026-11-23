@@ -158,3 +158,17 @@ h2,h1,.brand{color:var(--ink)}
 @media (max-width:640px) and (max-height:640px){
   #app{grid-template-rows:auto minmax(72px,.6fr) minmax(112px,1.3fr) minmax(72px,.75fr) auto}
 }
+
+
+/* The same saved settings as the rest of RepoTrace. */
+html[data-settings="on"] body{font-family:var(--sans,inherit);letter-spacing:var(--ui-tracking,0);line-height:var(--ui-leading,1.55)}
+html[data-settings="on"] pre,html[data-settings="on"] code,html[data-settings="on"] .mono,html[data-settings="on"] .sig code,html[data-settings="on"] .row>button.head .loc{
+  font-family:var(--mono,ui-monospace,Menlo,monospace);
+  font-variant-ligatures:var(--ui-ligatures,none);
+}
+html[data-contrast="high"]{--muted:var(--ink);--line:var(--ink)}
+html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after{animation:none!important;transition:none!important}
+html[data-density="compact"] #left,html[data-density="compact"] #right{font-size:12px}
+html[data-density="spacious"] #left,html[data-density="spacious"] #right{font-size:16px}
+html[data-density="compact"] #pin{padding:10px 12px}
+html[data-density="spacious"] #pin{padding:22px 20px}

@@ -5,7 +5,7 @@ import unittest
 from repotrace.changes.change_impact import analyze_change_impact
 from repotrace.report import lab_data
 from repotrace.report.dashboard import build_view
-from repotrace.report.recommendations import FIELDS, answer_followup, build_recommendations
+from repotrace.report.recommendations import FIELDS, answer_followup, build_recommendations, tests_to_run_first
 from tests.test_change_impact import RepoCase
 
 
@@ -162,6 +162,66 @@ class RecommendationTests(unittest.TestCase):
         self.assertFalse(empty['matched'])
         self.assertIn('not an AI answer', empty['note'])
         self.assertEqual(empty['hits'], [])
+
+    def test_tests_to_run_first_uses_only_recorded_evidence(self):
+        review = fixture()
+        review['tests_outside'] = [{
+            'name': 'test_later', 'file': 'tests/test_later.py', 'line': 8,
+            'run': 'python3 -m pytest tests/test_later.py::test_later',
+            'tier': 0, 'seen_in': ['before', 'after'],
+            'via': {'kind': 'setup', 'name': 'PricingTests.setUp'},
+            'chain': ['test_later', 'PricingTests.setUp', 'format_receipt'],
+            'reasons': [{'change': 1, 'for': 'format_receipt', 'tier': 0,
+                         'via': {'kind': 'setup', 'name': 'PricingTests.setUp'},
+                         'chain': ['test_later', 'PricingTests.setUp', 'format_receipt']}],
+        }]
+        items = build_recommendations(review)
+        review['recommendations'] = items
+        pack = tests_to_run_first(review)
+        blob = json.dumps(pack)
+        self.assertNotIn('safe', blob.lower())
+        self.assertNotRegex(blob, r'\d+(\.\d+)?%')
+        self.assertNotRegex(blob, r'\b0\.\d+')
+        self.assertNotIn('probability', blob.lower())
+        by_name = {row['name']: row for row in pack['tests']}
+        lost = next(item for item in items if item['evidence']['kind'] == 'lost-path' and 'test_total' in item['recommendation'])
+        self.assertEqual(by_name['test_total']['priority'], lost['priority'])
+        self.assertEqual(by_name['test_total']['confidence'], lost['confidence'])
+        self.assertEqual(by_name['test_total']['priority'], 'now')
+        self.assertEqual(by_name['test_total']['confidence']['level'], 'high')
+        self.assertIn('Lost path', by_name['test_total']['why'])
+        self.assertEqual(by_name['test_total']['command'], 'python3 -m pytest tests/test_pricing.py::test_total')
+        self.assertIn('not coverage', by_name['test_total']['does_not_prove'])
+        self.assertIn('not proof the code is untested', by_name['test_total']['does_not_prove'])
+        self.assertEqual(by_name['test_receipt']['priority'], 'soon')
+        self.assertEqual(by_name['test_receipt']['confidence']['level'], 'medium')
+        self.assertIn('Connected call', by_name['test_receipt']['why'])
+        self.assertEqual(by_name['test_later']['priority'], 'later')
+        self.assertEqual(by_name['test_later']['confidence']['level'], 'high')
+        self.assertIn('setUp', by_name['test_later']['why'])
+        self.assertIn('PricingTests.setUp', by_name['test_later']['why'])
+        self.assertTrue(any('unused_helper' in note for note in pack['missing']))
+        self.assertNotIn('unused_helper', by_name)
+
+        alone = {
+            'changed': [{'name': 'alpha', 'file': 'a.py', 'node': 1}],
+            'tests': [],
+            'tests_outside': [{
+                'name': 'test_alpha', 'file': 'tests/test_a.py', 'line': 2,
+                'run': 'python3 -m pytest tests/test_a.py::test_alpha',
+                'tier': 0, 'seen_in': ['before', 'after'],
+                'reasons': [{'change': 0, 'for': 'alpha', 'tier': 0, 'chain': ['test_alpha', 'alpha']}],
+            }],
+            'test_plan': {'omitted': 1, 'selected': 0},
+        }
+        advised = build_recommendations(alone)
+        self.assertFalse(any(item['evidence']['kind'] == 'no-test' for item in advised))
+        alone['recommendations'] = advised
+        only = tests_to_run_first(alone)['tests'][0]
+        self.assertEqual(only['priority'], 'now')
+        self.assertEqual(only['confidence']['level'], 'high')
+        self.assertIn('only connected test', only['priority_reason'])
+        self.assertIn('Connected call', only['why'])
 
 
 class WiredReviewTests(RepoCase):

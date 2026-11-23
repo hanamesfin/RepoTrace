@@ -4,7 +4,8 @@
 
 Runs only on this computer (127.0.0.1). It reads Git history; it never runs your project's code and
 never changes your repository. Every request needs a random per-launch token, so other web pages
-cannot talk to it.
+cannot talk to it. A GitHub sign-in, when you use one, keeps the token in ~/.repotrace on this
+computer and out of the browser.
 """
 import argparse
 import hmac
@@ -12,6 +13,7 @@ import json
 import hashlib
 import os
 import platform
+import re
 import secrets
 import shutil
 import subprocess
@@ -24,9 +26,9 @@ import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlsplit, urlparse
 
-from repotrace.app import examples
+from repotrace.app import examples, github_auth, workspaces
 from repotrace.changes.change_impact import analyze_change_impact
 from repotrace.graph.graph_explore import Explorer
 from repotrace.graph.graph_index import GraphIndex
@@ -42,7 +44,7 @@ MAX_JOBS = 12
 TEMPLATE = Path(__file__).resolve().parent.parent / 'report' / 'dashboard_template.html'
 LAB_DIR = Path(__file__).resolve().parent.parent / 'report' / 'lab'
 LAB_FILES = {'app.js': 'application/javascript', 'model.js': 'application/javascript', 'picker.js': 'application/javascript',
-             'theme.js': 'application/javascript', 'style.css': 'text/css',
+             'theme.js': 'application/javascript', 'settings.js': 'application/javascript', 'style.css': 'text/css',
              'explore.html': 'text/html', 'explore.js': 'application/javascript', 'explore.css': 'text/css', 'icon.svg': 'image/svg+xml'}
 LAB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-src 'self'; "
            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -193,6 +195,151 @@ def browse_for_folder():
     except (OSError, subprocess.TimeoutExpired):
         return None
     return done.stdout.strip().rstrip('/') or None if done.returncode == 0 else None
+
+
+# ------------------------------------------------------------------ clone into ~/.repotrace/mirrors
+
+_CLONE_HOST = re.compile(r'^[A-Za-z0-9.-]{1,253}$')
+_CLONE_SEGMENT = re.compile(r'^[A-Za-z0-9_.-]{1,100}$')
+_GITHUB_HOSTS = ('github.com', 'www.github.com')
+
+
+def _folder_segment(part, strip_git=False):
+    text = '' if part is None else str(part).strip()
+    if strip_git and text.lower().endswith('.git'):
+        text = text[:-4]
+    if not text or not _CLONE_SEGMENT.fullmatch(text):
+        raise ValueError('That address cannot be used as a folder name.')
+    return text
+
+
+def _clean_host(host):
+    host = '' if host is None else str(host).strip().lower()
+    if not host or not _CLONE_HOST.fullmatch(host) or '..' in host or host.startswith('.') or host.endswith('.'):
+        raise ValueError('That address does not name a host RepoTrace can clone.')
+    return host
+
+
+def parse_clone_request(url, kind):
+    """Turn a pasted address into a host and folder names. Rejects secrets and odd paths."""
+    text = '' if url is None else str(url).strip()
+    if not text or any(ch.isspace() or ord(ch) < 32 for ch in text) or text.startswith('-'):
+        raise ValueError('Enter a repository address with no spaces.')
+    kind = '' if kind is None else str(kind).strip().lower()
+    if kind == 'ssh':
+        return _parse_ssh_url(text)
+    if kind == 'https':
+        return _parse_https_url(text)
+    raise ValueError('Choose Clone Repository or Connect via SSH.')
+
+
+def _parse_https_url(text):
+    if text.startswith('git@') or text.lower().startswith('ssh://'):
+        raise ValueError('That is an SSH address. Use Connect via SSH.')
+    if not text.lower().startswith('https://'):
+        raise ValueError('Use an https address, for example https://github.com/owner/repo.git.')
+    parts = urlsplit(text)
+    if parts.username or parts.password:
+        raise ValueError('That address includes a secret. Paste the repository address without a token.')
+    if parts.query or parts.fragment:
+        raise ValueError('Paste the repository address only, without a query or a fragment.')
+    host = _clean_host(parts.hostname)
+    raw = [piece for piece in parts.path.split('/') if piece]
+    if len(raw) < 2 or any(piece in ('.', '..') for piece in raw):
+        raise ValueError('That address needs an owner and a repository.')
+    segments = [_folder_segment(piece, strip_git=(index == len(raw) - 1)) for index, piece in enumerate(raw)]
+    return {
+        'transport': 'https', 'host': host, 'segments': segments,
+        'url': 'https://{host}/{path}.git'.format(host=host, path='/'.join(segments)),
+    }
+
+
+def _parse_ssh_url(text):
+    lowered = text.lower()
+    if lowered.startswith('https://') or lowered.startswith('http://') or lowered.startswith('ssh://'):
+        raise ValueError('Use an SSH address like git@host:owner/repo.git.')
+    if text.count('@') != 1:
+        raise ValueError('Use an SSH address like git@host:owner/repo.git. RepoTrace does not collect SSH keys.')
+    user, _, rest = text.partition('@')
+    if user != 'git' or ':' not in rest or '\\' in rest:
+        raise ValueError('Use an SSH address like git@host:owner/repo.git. RepoTrace does not collect SSH keys.')
+    host, _, path = rest.partition(':')
+    host = _clean_host(host)
+    if not path or path.startswith(('/', '-')):
+        raise ValueError('Use an SSH address like git@host:owner/repo.git.')
+    raw = [piece for piece in path.split('/') if piece]
+    if len(raw) < 2 or any(piece in ('.', '..') for piece in raw):
+        raise ValueError('That SSH address needs an owner and a repository.')
+    segments = [_folder_segment(piece, strip_git=(index == len(raw) - 1)) for index, piece in enumerate(raw)]
+    return {
+        'transport': 'ssh', 'host': host, 'segments': segments,
+        'url': 'git@{host}:{path}.git'.format(host=host, path='/'.join(segments)),
+    }
+
+
+def clone_destination(home, parsed):
+    """A folder under ~/.repotrace/mirrors, and nowhere else."""
+    root = (Path(home) / '.repotrace' / 'mirrors').resolve()
+    if parsed['host'] in _GITHUB_HOSTS and len(parsed['segments']) == 2:
+        dest = root.joinpath(parsed['segments'][0], parsed['segments'][1])
+    else:
+        dest = root.joinpath(parsed['host'], *parsed['segments'])
+    dest = dest.resolve()
+    if dest == root or root not in dest.parents:
+        raise ValueError('That address cannot be cloned into the mirror folder.')
+    return dest
+
+
+def plan_clone(home, url, kind):
+    """Where a clone would go. Does not create the folder and does not run git."""
+    parsed = parse_clone_request(url, kind)
+    dest = clone_destination(home, parsed)
+    exists = (dest / '.git').is_dir()
+    return {
+        'url': parsed['url'], 'dest': str(dest), 'exists': exists,
+        'blocked': dest.exists() and not exists,
+        'action': 'fetch' if exists else 'clone',
+        'host': parsed['host'], 'transport': parsed['transport'],
+    }
+
+
+def clone_may_use_github_token(plan):
+    """Only an https GitHub address may see the saved token, and only as an environment header."""
+    return plan.get('transport') == 'https' and plan.get('host') in _GITHUB_HOSTS
+
+
+def perform_clone(home, url, kind, confirm, token=None, git_run=None):
+    """Clone, or fetch --prune when the mirror folder is already a Git checkout.
+
+    ``confirm`` must be the destination ``plan_clone`` showed. Nothing is pulled,
+    reset, or checked out on an existing folder. The token is never an argument.
+    """
+    plan = plan_clone(home, url, kind)
+    if confirm != plan['dest']:
+        raise ValueError('Confirm the folder shown on screen before cloning.')
+    if plan['blocked']:
+        raise ValueError(plan['dest'] + ' already exists and is not a Git clone. RepoTrace will not replace it.')
+    if not clone_may_use_github_token(plan):
+        token = None
+    if token and any(token in str(part) for part in (plan['url'], plan['dest'])):
+        raise ValueError('Refusing to put the GitHub token in the clone.')
+    root = Path(home) / '.repotrace'
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(root, 0o700)
+    except OSError:
+        pass
+    (root / 'mirrors').mkdir(parents=True, exist_ok=True)
+    runner = git_run or github_auth.run_git
+    dest = Path(plan['dest'])
+    if plan['action'] == 'fetch':
+        runner(['-C', str(dest), 'fetch', '--prune'], token=token)
+    else:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        runner(['clone', '--origin', 'origin', plan['url'], str(dest)], token=token)
+    if token:
+        github_auth.reject_token_in_clone(dest, token)
+    return {'repo': str(dest), 'name': dest.name, 'action': plan['action']}
 
 
 # ------------------------------------------------------------------ jobs
@@ -353,7 +500,7 @@ class Job:
 # ------------------------------------------------------------------ server
 
 class AppState:
-    def __init__(self, initial_repo=None, recent_file=None, page_hook=None, browse=browse_for_folder):
+    def __init__(self, initial_repo=None, recent_file=None, page_hook=None, browse=browse_for_folder, github=None):
         self.token = secrets.token_urlsafe(24)
         self.port = None
         self.jobs, self.lock = {}, threading.Lock()
@@ -364,6 +511,7 @@ class AppState:
         self.demo_dir = None
         self.examples_dir = None
         self.prepared = {}
+        self.github = github if github is not None else github_auth.GitHubSession()
 
     def prepare_example(self, example_id):
         if example_id not in self.prepared:
@@ -387,7 +535,7 @@ class AppState:
 
     def remember(self, repo, name):
         items = [r for r in self.recent() if r.get('path') != repo]
-        items.insert(0, {'path': repo, 'name': name})
+        items.insert(0, {'path': repo, 'name': name, 'opened': int(time.time() * 1000)})
         try:
             self.recent_file.parent.mkdir(parents=True, exist_ok=True)
             self.recent_file.write_text(json.dumps(items[:8]))
@@ -415,9 +563,12 @@ class AppState:
         return html.replace('</head>', meta + '</head>', 1)
 
     def cleanup(self):
-        for folder in (self.demo_dir, self.examples_dir):
-            if folder:
-                shutil.rmtree(folder, ignore_errors=True)
+        try:
+            self.github.close()
+        finally:
+            for folder in (self.demo_dir, self.examples_dir):
+                if folder:
+                    shutil.rmtree(folder, ignore_errors=True)
 
 
 def make_server(host='127.0.0.1', port=0, **kwargs):
@@ -498,7 +649,8 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                 if not self.guard():
                     return
                 self.json(200, {'recent': state.recent(), 'can_browse': platform.system() == 'Darwin',
-                                'initial_repo': state.initial_repo, 'platform': platform.system()})
+                                'initial_repo': state.initial_repo, 'platform': platform.system(),
+                                'workspaces': [workspaces.workspace_summary(w) for w in workspaces.list_workspaces()]})
             elif url.path == '/api/examples':
                 if not self.guard():
                     return
@@ -512,6 +664,31 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                 if not self.guard():
                     return
                 self.explore(url.path, query)
+            elif url.path == '/api/github/status':
+                if not self.guard():
+                    return
+                self.json(200, github_auth.scrub_public(state.github.status()))
+            elif url.path == '/api/workspaces':
+                if not self.guard():
+                    return
+                items = workspaces.list_workspaces()
+                self.json(200, {'workspaces': [workspaces.workspace_summary(w) for w in items]})
+            elif url.path == '/api/workspace':
+                if not self.guard():
+                    return
+                ws_id = (query.get('id') or [''])[0]
+                ws = workspaces.get_workspace(ws_id)
+                if not ws:
+                    self.json(404, {'error': 'Workspace not found.'})
+                else:
+                    self.json(200, ws)
+            elif url.path == '/api/github/repos':
+                if not self.guard():
+                    return
+                try:
+                    self.json(200, github_auth.scrub_public(state.github.list_repos()))
+                except github_auth.GitHubError as exc:
+                    self.json(400, {'error': github_auth.scrub_text(str(exc))})
             elif url.path == '/api/export':
                 if not self.guard(query_token=(query.get('token') or [''])[0]):
                     return
@@ -622,6 +799,72 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                                                 'shows': comparison['shows'], 'steps': comparison['steps']}})
                 elif path == '/api/browse':
                     self.json(200, {'path': state.browse()})
+                elif path == '/api/workspace/create':
+                    ws = workspaces.create_workspace(
+                        name=data.get('name', ''),
+                        repo=data.get('repo', ''),
+                        description=data.get('description', ''),
+                    )
+                    # Capture the latest commits right away
+                    if Path(ws['repo']).is_dir():
+                        try:
+                            ws = workspaces.auto_capture_versions(ws['id'], ws['repo'])
+                        except Exception:
+                            pass  # workspace was created; version capture is best-effort
+                    self.json(200, ws)
+                elif path == '/api/workspace/add-version':
+                    ws = workspaces.add_version(
+                        ws_id=data.get('id', ''),
+                        commit=data.get('commit', ''),
+                        subject=data.get('subject', ''),
+                        author=data.get('author', ''),
+                        branch=data.get('branch', ''),
+                    )
+                    self.json(200, ws)
+                elif path == '/api/workspace/refresh':
+                    ws_id = data.get('id', '')
+                    ws = workspaces.get_workspace(ws_id)
+                    if not ws:
+                        self.json(404, {'error': 'Workspace not found.'})
+                        return
+                    if Path(ws['repo']).is_dir():
+                        ws = workspaces.auto_capture_versions(ws_id, ws['repo'])
+                    self.json(200, ws)
+                elif path == '/api/workspace/rename':
+                    ws = workspaces.rename_workspace(
+                        ws_id=data.get('id', ''),
+                        name=data.get('name', ''),
+                    )
+                    self.json(200, ws)
+                elif path == '/api/workspace/delete':
+                    deleted = workspaces.delete_workspace(data.get('id', ''))
+                    self.json(200, {'ok': deleted})
+                elif path == '/api/workspace/compare':
+                    ws_id = data.get('id', '')
+                    ws = workspaces.get_workspace(ws_id)
+                    if not ws:
+                        self.json(404, {'error': 'Workspace not found.'})
+                        return
+                    base, head = workspaces.compare_versions(
+                        ws_id,
+                        int(data.get('base_index', -1)),
+                        int(data.get('head_index', -1)),
+                    )
+                    # Start a lab job with those commits
+                    folder = Path(ws['repo'])
+                    if not folder.is_dir():
+                        raise ValueError('The workspace project folder was not found.')
+                    roots = [str(r) for r in (data.get('source_roots') or []) if isinstance(r, str)]
+                    reverse = bool(data.get('reverse'))
+                    analysis_base, analysis_head, rev = lab_direction(base, head, reverse)
+                    if not state.is_temporary(str(folder)):
+                        state.remember(str(folder), folder.name)
+                    job = state.start({
+                        'kind': 'lab', 'repo': str(folder),
+                        'base': analysis_base, 'head': analysis_head,
+                        'source_roots': roots, 'include_possible': True, 'reverse': rev,
+                    })
+                    self.json(200, {'job': job.id, 'base': base, 'head': head, 'workspace': ws_id})
                 elif path == '/api/demo':
                     if state.demo_dir is None:
                         state.demo_dir = tempfile.mkdtemp(prefix='repotrace-demo-')
@@ -629,12 +872,38 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                     if not repo.exists():
                         make_demo_repo(state.demo_dir)
                     self.json(200, {'repo': str(repo)})
+                elif path == '/api/github/device':
+                    self.json(200, github_auth.scrub_public(state.github.start_device_flow()))
+                elif path == '/api/github/token':
+                    self.json(200, github_auth.scrub_public(state.github.accept_token(data.get('token'))))
+                elif path == '/api/github/logout':
+                    self.json(200, github_auth.scrub_public(state.github.logout()))
+                elif path == '/api/github/use':
+                    self.json(200, github_auth.scrub_public(state.github.use_repo(data.get('full_name'))))
+                elif path == '/api/clone':
+                    plan = plan_clone(state.github.home, data.get('url'), data.get('kind'))
+                    public = {
+                        'needs_confirm': True, 'dest': plan['dest'], 'exists': plan['exists'],
+                        'blocked': plan['blocked'], 'action': plan['action'], 'url': plan['url'],
+                    }
+                    if data.get('confirm') != plan['dest']:
+                        self.json(200, public)
+                        return
+                    token = None
+                    if clone_may_use_github_token(plan):
+                        saved = state.github._load()
+                        if saved and saved.get('token'):
+                            token = saved['token']
+                            state.github.remember_secret(token)
+                    cloned = perform_clone(state.github.home, data.get('url'), data.get('kind'), data.get('confirm'), token=token)
+                    self.json(200, state.github.publish(cloned))
                 else:
                     self.json(404, {'error': 'Not found.'})
             except GitError as exc:
                 self.json(400, {'error': friendly(exc)})
             except (ValueError, KeyError) as exc:
-                self.json(400, {'error': str(exc)})
+                message = state.github.redact(str(exc)) if path.startswith('/api/github') or path == '/api/clone' else str(exc)
+                self.json(400, {'error': message})
 
     server = ThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True

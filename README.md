@@ -74,6 +74,7 @@ qa/browser/run_lab_saved.sh OUT                  # the same checks on the saved 
 ## More
 - **New teammate? Start with [docs/PROJECT_HANDBOOK.md](docs/PROJECT_HANDBOOK.md)**: direction, decisions, measured numbers, weak spots, plan
 - [prototype/](prototype/README.md): the clickable designs (open `prototype/lab/index.html` in Chrome)
-- [docs/GUIDE.md](docs/GUIDE.md): how to run each example and what it shows
+- [docs/RepoTrace_User_Manual.pdf](docs/RepoTrace_User_Manual.pdf): the senior-project user manual for submission (HiLCoE guideline, section 5)
+- [docs/GUIDE.md](docs/GUIDE.md): the earlier screen, and how to run each example
 - [docs/REFERENCE.md](docs/REFERENCE.md): the detailed technical reference
 - [docs/ROADMAP.md](docs/ROADMAP.md): what could come next

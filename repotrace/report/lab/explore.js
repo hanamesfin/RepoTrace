@@ -777,7 +777,7 @@ window.__xp = {S, D, get N() { return N; }, get G() { return G; }, get GK() { re
 window.__xpHandle = m => {
   if (m.rt === 'palette') openPalette();
   else if (m.rt === 'navigate') navigateTo(m);
-  else if (m.rt === 'theme') redraw = true;          // the colours changed: paint the canvas again
+  else if (m.rt === 'theme' || m.rt === 'settings') { if (m.rt === 'settings' && window.RTSettings) RTSettings.apply(); redraw = true; }
 };
 // The app brings this page back to the front. Same place as before: change nothing. Otherwise go where it asks.
 function navigateTo(m) {

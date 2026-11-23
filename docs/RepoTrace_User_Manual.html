@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RepoTrace — Senior Project User Manual</title>
+<style>
+  @page prelim {
+    size: A4;
+    margin: 1in;
+    @bottom-center { content: none; }
+  }
+  @page body {
+    size: A4;
+    margin: 1in;
+    @bottom-center {
+      content: counter(page);
+      font-family: "Times New Roman", Times, serif;
+      font-size: 12pt;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: #e8e4dc; }
+  body { margin: 0; color: #000; }
+  .sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 12px auto;
+    background: #fff;
+    padding: 1in;
+  }
+  .prelim { page: prelim; }
+  .body { page: body; }
+  .cover {
+    min-height: calc(297mm - 2in);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .cover .school {
+    font-family: "Cooper Black", CooperBlack, Georgia, serif;
+    font-size: 14pt;
+    font-weight: 400;
+    margin: 0 0 4pt;
+  }
+  .cover .school-sub {
+    font-family: Calibri, "Segoe UI", sans-serif;
+    font-size: 16pt;
+    font-weight: 700;
+    margin: 0 0 36pt;
+  }
+  .cover h1 {
+    font-family: Calibri, "Segoe UI", sans-serif;
+    font-size: 16pt;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.35;
+    margin: 0 0 28pt;
+    max-width: 34em;
+  }
+  .cover .kind {
+    font-family: Calibri, "Segoe UI", sans-serif;
+    font-size: 16pt;
+    font-weight: 700;
+    margin: 0 0 36pt;
+  }
+  .cover .prep, .cover .names, .cover .date {
+    font-family: Calibri, "Segoe UI", sans-serif;
+    font-size: 16pt;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.45;
+  }
+  .cover .prep { margin-bottom: 8pt; }
+  .cover .date { margin-top: 28pt; }
+  h1.ch, h2, h3, p, li, td, th, caption {
+    font-family: "Times New Roman", Times, serif;
+  }
+  h1.ch { font-size: 15pt; font-weight: 700; margin: 18pt 0 10pt; line-height: 1.3; }
+  h2 { font-size: 14pt; font-weight: 700; margin: 14pt 0 8pt; line-height: 1.3; }
+  h3 { font-size: 13pt; font-weight: 700; margin: 12pt 0 6pt; line-height: 1.3; }
+  p, li, td, th { font-size: 12pt; line-height: 1.5; }
+  p { margin: 0 0 10pt; text-align: justify; }
+  ol, ul { margin: 0 0 10pt; padding-left: 1.3em; }
+  li { margin: 0 0 4pt; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; }
+  th, td { border: 1px solid #000; padding: 4pt 6pt; vertical-align: top; text-align: left; }
+  th { font-weight: 700; }
+  caption { caption-side: top; text-align: left; font-weight: 700; margin-bottom: 4pt; }
+  code, pre { font-family: "Courier New", Courier, monospace; font-size: 11pt; }
+  pre {
+    border: 1px solid #000;
+    padding: 8pt 10pt;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    margin: 0 0 10pt;
+  }
+  .toc p { text-align: left; margin: 0 0 4pt; }
+  .note { margin: 0 0 10pt; }
+  @media print {
+    html { background: #fff; }
+    .sheet { margin: 0; width: auto; min-height: 0; padding: 0; }
+    .break { break-after: page; page-break-after: always; }
+  }
+  @media screen {
+    .break { margin-bottom: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<section class="sheet prelim cover break">
+  <p class="school">HiLCoE</p>
+  <p class="school-sub">School of Computer Science and Technology</p>
+  <h1>REPOTRACE: A LOCAL SYSTEM FOR EXPLORING PYTHON CODE AND REVIEWING THE IMPACT OF A CHANGE</h1>
+  <p class="kind">SENIOR PROJECT USER MANUAL</p>
+  <p class="prep">Prepared by:</p>
+  <p class="names">HANA MESFIN</p>
+  <p class="names">ISRAEL HAYALSEW</p>
+  <p class="names">JAFFER HUSSIEN</p>
+  <p class="names">KAL TSEGAYE</p>
+  <p class="date">NOVEMBER 2026</p>
+</section>
+
+<section class="sheet prelim break">
+  <h1 class="ch">Contents</h1>
+  <div class="toc">
+    <p>1. Introduction</p>
+    <p>2. Installation and starting the system</p>
+    <p style="padding-left:1.2em">2.1 What is required</p>
+    <p style="padding-left:1.2em">2.2 Starting the guided screens</p>
+    <p style="padding-left:1.2em">2.3 Stopping the system</p>
+    <p style="padding-left:1.2em">2.4 The earlier screen</p>
+    <p>3. Using the system</p>
+    <p style="padding-left:1.2em">3.1 Open a project</p>
+    <p style="padding-left:1.2em">3.2 Choose two versions</p>
+    <p style="padding-left:1.2em">3.3 Reverse a comparison</p>
+    <p style="padding-left:1.2em">3.4 While the system reads</p>
+    <p style="padding-left:1.2em">3.5 The workspace</p>
+    <p style="padding-left:1.2em">3.6 Check a change</p>
+    <p style="padding-left:1.2em">3.7 Recommendations</p>
+    <p style="padding-left:1.2em">3.8 Explore the project</p>
+    <p style="padding-left:1.2em">3.9 Files, search, and the keyboard</p>
+    <p style="padding-left:1.2em">3.10 Settings, export, and running again</p>
+    <p>4. Error handling and reporting</p>
+    <p>5. Help frames</p>
+    <p>6. How to read the results</p>
+    <p>References</p>
+  </div>
+  <p>This manual is the user-manual deliverable of the senior project. In the final project report it is attached as an annex, as required by the school documentation guideline [1].</p>
+</section>
+
+<section class="sheet body">
+  <h1 class="ch">1. Introduction</h1>
+  <p>This manual explains how an end user installs RepoTrace and uses it. RepoTrace is a local system for a Python project. It reads the source and, when the folder is a Git repository, the saved history. It shows where code lives, which functions call which, what a chosen change could affect, and which existing tests are connected to that change.</p>
+  <p>The system does not upload the project, does not edit the repository, and does not run the project’s code or its tests. A result that lists nothing found is a report that nothing was found. It is not a statement that the change is safe.</p>
+  <p>The manual is written for a person who has the project folder on their own computer and wants to open it, compare two versions, and read the review. It covers installation, the order of use, the messages shown when something cannot be done, and the help already placed on the screens.</p>
+
+  <h1 class="ch">2. Installation and starting the system</h1>
+  <h2>2.1 What is required</h2>
+  <p>The computer needs Python 3.9 or newer [2]. Git is required only when two versions are compared [3]. No other package is installed. The project folder of RepoTrace itself is the folder that contains <code>repotrace/</code> and <code>RepoTrace.command</code>.</p>
+  <h2>2.2 Starting the guided screens</h2>
+  <p>The guided screens are the screens this manual describes. Open a terminal, move into the RepoTrace folder, and run:</p>
+  <pre>python3 -m repotrace --lab</pre>
+  <p>The browser opens a page on this computer only. The address looks like <code>http://127.0.0.1:58510/lab</code>. The port can differ each time the system starts. The first screen is <strong>Open a project</strong>.</p>
+  <p>To place a folder in the path box before the page opens, pass the folder:</p>
+  <pre>python3 -m repotrace --lab "/path/to/your/project"</pre>
+  <h2>2.3 Stopping the system</h2>
+  <p>Leave the terminal window open while the browser is in use. Press Ctrl+C in that terminal, or close the terminal, to stop RepoTrace. Closing the browser page stops the person from reading the result. It does not by itself stop the program until the terminal is stopped.</p>
+  <h2>2.4 The earlier screen</h2>
+  <p>Double-clicking <code>RepoTrace.command</code>, or running <code>python3 -m repotrace</code> with no flag, opens the earlier screen rather than the guided screens. That screen has its own example gallery. This manual does not repeat that gallery. Use the flag <code>--lab</code> when the guided screens are wanted.</p>
+
+  <h1 class="ch">3. Using the system</h1>
+  <h2>3.1 Open a project</h2>
+  <p>Type the path of a folder that contains Python files, or press <strong>Browse…</strong> on a Mac, and then press <strong>Open</strong>. Folders opened before are listed under the form and can be opened from those cards.</p>
+  <p><strong>Explore without comparing</strong> reads the working folder and does not ask for two versions. Use it when the folder has no Git history, or when the map of the current files is enough. Git is required only for a comparison of two saved versions.</p>
+  <p>The map and the source on screen are the snapshot that was read. If files are edited after that, open the project again. RepoTrace does not watch the folder.</p>
+
+  <h2>3.2 Choose two versions</h2>
+  <p>When the folder is a Git repository and at least two commits are found, the next screen is <strong>Choose what to compare</strong>. Two menus are shown.</p>
+  <table>
+    <caption>Table 1. The two version menus</caption>
+    <thead><tr><th>Menu</th><th>Meaning when Reverse is No</th></tr></thead>
+    <tbody>
+      <tr><td>Older version, marked Start</td><td>The version before the change.</td></tr>
+      <tr><td>Newer version, marked End</td><td>The version after the change.</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Only explore the map</strong> turns the comparison off. <strong>Analyse</strong> starts the comparison. The two chosen versions must be different. Unsaved edits in the working folder are not part of the comparison. The map can still show the working folder. The comparison uses saved commits only.</p>
+
+  <h2>3.3 Reverse a comparison</h2>
+  <p>Under the two menus, <strong>Reverse this change?</strong> has the answers <strong>No</strong> and <strong>Yes</strong>. No reads from the older version to the newer version, which is the direction in which the change was made. Yes reads the same two versions in the opposite direction, from the newer version to the older version. Lines that the later version added are then shown as removed, and lines it removed are shown as added. The sentence under the control states the direction before <strong>Analyse</strong> is pressed. The round swap button switches between No and Yes. The Git repository is not modified.</p>
+  <p>After a review is open, the switch <strong>Reverse this change</strong> asks for the same pair again with the opposite answer. A banner states when the review on screen is the reversed one. Turning the switch again returns to the first direction. Each direction is a new read of the same two commits.</p>
+
+  <h2>3.4 While the system reads</h2>
+  <p>The page keeps one list and moves the highlight down it. The steps are: check the project; map the working folder; read the older version; read the newer version; compare the two versions; find what could be affected; prepare the screens. On a reversed run, the reading steps name the newer version as the start and the older version as the end. A commit identifier under a step is a note about the step that is running. It is not another step. The clock shows the time elapsed. A finished step shows how long it took.</p>
+  <p><strong>Cancel</strong> stops at the end of the step that is running and returns to the previous screen. Nothing in the repository is changed.</p>
+
+  <h2>3.5 The workspace</h2>
+  <p>After the read finishes, the workspace has five sections. On a wide window they are listed on the left. On a phone they are a bar along the bottom: Start, Review, Map, Files, and Settings.</p>
+  <table>
+    <caption>Table 2. Workspace sections</caption>
+    <thead><tr><th>Section</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td>Start</td><td>The comparison in one paragraph, the counts, and the ways into the review, the tests, and the map.</td></tr>
+      <tr><td>Check a change</td><td>The review. When only one comparison was run, this opens that review.</td></tr>
+      <tr><td>Explore the project</td><td>The map of folders, files, functions, and recorded calls.</td></tr>
+      <tr><td>File list</td><td>The same project as folders, then files, then functions, without the graph.</td></tr>
+      <tr><td>Settings</td><td>Appearance, local Git status, export, and running the comparison again.</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Back</strong>, or Alt+Left arrow, returns to the previous view. <strong>Find code</strong>, or Command+K on a Mac and Ctrl+K on Windows and Linux, opens search. The forward slash key does the same when the cursor is not in a text field.</p>
+
+  <h2>3.6 Check a change</h2>
+  <p>The title of the review is the commit message of the change being read. Start and End name the two versions in the direction of this run. The counts are definitions changed, places to inspect, and tests listed. A count of zero connected tests is marked, because a missing test is a gap in the report.</p>
+  <p><strong>Run this comparison again</strong> repeats the saved pair on this computer. It does not change Git and it does not run tests.</p>
+  <p><strong>What to check</strong> lists the places the comparison flagged, with the line that made each one matter. A comparison can also have changed definitions and no flagged concern. The absence of a flag is not a statement that the change is safe to merge.</p>
+  <p><strong>Changed code</strong> lists each changed definition. A line that begins with a plus sign was added. A line that begins with a minus sign was removed. Colour is a second mark, not the only mark. A removed definition is shown from the older version. A rename pairing is evidence from the comparison. It is not a guarantee that the behaviour is unchanged.</p>
+  <p><strong>Related tests</strong> lists tests connected to the change by following recorded calls, including unittest <code>setUp</code> hooks. A test connected before the change and not followable after it is reported as a path that was lost. A test that reaches the code only through a pytest fixture can be missing, because those fixtures are not all followed. The command beside a test is copied to the clipboard. It is not executed. The list is a starting point. Tests that sit outside the list are counted. Their absence from the short list is not permission to skip the rest of the suite.</p>
+  <p><strong>Limits and history</strong> states what this review cannot establish. History lists files that were edited in the same commits as a changed file. That is a correlation. It is not a call, and it is not a prediction that the files must change together.</p>
+
+  <h2>3.7 Recommendations</h2>
+  <p>The Recommendations tab reads the review that is already on screen. Each item names a definition, a file, or a test, and gives the recommendation, the reasoning, the evidence, the expected impact, a priority, a confidence, how to carry it out, what is required first, the risks, and a next action.</p>
+  <table>
+    <caption>Table 3. Recommendation levels</caption>
+    <thead><tr><th>Level</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>1, Immediate</td><td>A concern, a test whose path exists only in the older version, a removed test, or a changed definition with no connected test.</td></tr>
+      <tr><td>2, Analytical</td><td>Files edited together in the saved history. This is correlation, not a cause.</td></tr>
+      <tr><td>3, Predictive</td><td>Not shown. The system has no probability model, so it does not invent a forecast.</td></tr>
+      <tr><td>4, Strategic</td><td>At most one choice between two actions the review already lists.</td></tr>
+    </tbody>
+  </table>
+  <p>Confidence is high when the link is written in the source, medium when one step is an assumption, and low when the only support is history. There is no numeric score.</p>
+  <p><strong>Evidence</strong>, <strong>Explain</strong>, and <strong>Action plan</strong> open those fields. The main button follows the next action: another tab of the review, the function on the map, or a copied test command. <strong>Compare</strong> places two items side by side. <strong>Save</strong>, <strong>Mark completed</strong>, and <strong>Dismiss</strong> are stored in this browser for this folder and this pair of versions. They are not uploaded. <strong>Show dismissed</strong> brings hidden items back. <strong>Ask a follow-up</strong> searches the words of these items. The page states that the search is not an AI answer. If no words match, the page says so. If no item met the evidence rules, the list is left empty.</p>
+
+  <h2>3.8 Explore the project</h2>
+  <p>Explore opens the map. On a wide window the controls, the graph, and the detail sit side by side. When the window is too narrow for three columns, the detail moves under the graph. On a phone the regions stack. The side list eases to icons so the map can use the width.</p>
+  <p><strong>Physical</strong> groups the code by folder. <strong>Logical</strong> groups it by recorded calls. <strong>Conceptual</strong> is marked experimental. Its topics are guessed from calls and from common words, and they are often wrong. Treat that view as a guess.</p>
+  <p>Sure links, maybe links, and test code can be shown or hidden. Test code stays hidden until it is requested. Click a name to read it. The lists beside the graph carry the same connections, so the picture is not the only way through. <strong>Explore</strong> walks the working folder. <strong>Review a change</strong> marks what the current comparison changed. Search matches words in names, paths, comments, and code. It is not an AI answer.</p>
+
+  <h2>3.9 Files, search, and the keyboard</h2>
+  <p>File list opens folders, then files, then the functions in a file. A function page shows its source, what calls it, and what it calls. <strong>Possible links</strong> and <strong>Test code</strong> filter that page. A missing connection is recorded as missing. It is not proof that nothing calls the function.</p>
+  <table>
+    <caption>Table 4. Keyboard</caption>
+    <thead><tr><th>Key</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Command+K, or Ctrl+K</td><td>Find code</td></tr>
+      <tr><td>/, when not typing in a field</td><td>Find code</td></tr>
+      <tr><td>Alt+Left arrow</td><td>Back</td></tr>
+      <tr><td>Esc</td><td>Leave a field, then go back</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3.10 Settings, export, and running again</h2>
+  <p>Appearance offers twelve editor themes. Pointing at a card previews it. Clicking a card saves it on this computer for the next time the page opens. GitHub Light and Solarized Light are the light themes. The others are dark.</p>
+  <p>Integrations shows the only Git connection, which is the folder that was opened: the branch, whether the working tree has uncommitted changes, HEAD, and how many recent commits were listed. <strong>Refresh local Git</strong> reads that status again. There is no separate disconnect action. Closing the page is what stops the read.</p>
+  <p><strong>Export review JSON</strong> and <strong>Export review CSV</strong> download the review already on screen, including changed definitions, concerns, tests, and recommendations. The file is built in the browser. Nothing is uploaded. GitHub, GitLab, Bitbucket, Slack, and the other hosted services named on that screen are not connected. The system has no sign-in for them, because sending the repository to those services would take the code off this computer.</p>
+
+  <h1 class="ch">4. Error handling and reporting</h1>
+  <p>RepoTrace reports a problem on the page that was in use. It does not send the message, the path, or the source to another computer. The person corrects the cause and tries again, or goes back. Table 5 lists the situations an end user meets.</p>
+  <table>
+    <caption>Table 5. What the screen reports, and what to do</caption>
+    <thead><tr><th>Situation</th><th>What is reported</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>The folder path is empty or cannot be opened</td><td>The message returned for that request, on the open screen</td><td>Type a folder that exists on this computer, or use Browse.</td></tr>
+      <tr><td>The same commit is chosen twice</td><td>Choose two different versions, or tick “Only explore the map”.</td><td>Pick another version, or explore the map only.</td></tr>
+      <tr><td>The analysis cannot finish</td><td>“The analysis failed,” with the message, and a way back to choosing a project</td><td>Read the message. Typical causes are a missing folder or a Git error. Start again from Open a project.</td></tr>
+      <tr><td>The person stops a read</td><td>The progress screen closes and the previous screen returns</td><td>No repair is required. The repository was not changed.</td></tr>
+      <tr><td>The folder is not a Git repository</td><td>“Not a Git repository” on Settings, after Refresh local Git</td><td>Explore without comparing. A comparison needs saved commits.</td></tr>
+      <tr><td>There is no review to export</td><td>“There is no review to export.”</td><td>Run a comparison first. Export stays disabled until a review exists.</td></tr>
+      <tr><td>A test command cannot be copied</td><td>“Copy unavailable here. Select the visible command and copy it.”</td><td>Select the command on the page and copy it with the browser.</td></tr>
+      <tr><td>A screen cannot be drawn</td><td>“This page could not be drawn.”</td><td>Use Back, or Go to Start. The project was not changed.</td></tr>
+      <tr><td>A comparison cannot be reversed from the current page</td><td>“This comparison cannot be reversed from here.”</td><td>Open a live review that still has the chosen pair. A saved prototype page has no folder to re-read.</td></tr>
+    </tbody>
+  </table>
+  <p>If the browser shows that the page cannot be reached, the terminal that started RepoTrace has been closed or the address is from an older run. Start the system again with section 2.2 and use the address printed in the terminal.</p>
+
+  <h1 class="ch">5. Help frames</h1>
+  <p>Help is placed on the screens themselves. There is no separate help site. Table 6 names each help frame and what the user should take from it.</p>
+  <table>
+    <caption>Table 6. Help frames</caption>
+    <thead><tr><th>Where</th><th>What it tells the user</th></tr></thead>
+    <tbody>
+      <tr><td>What works here?, at the bottom of the side list, and the status line “Static analysis · not runtime proof”</td><td>The dialog “Real evidence, with its limits.” Search is word search. A sure link is written in the code. A maybe link depends on an assumption. Neither proves that the code runs. Commands are copied and are not executed. History is not a dependency. A missing link is not proof of safety.</td></tr>
+      <tr><td>The sentence under Reverse this change?</td><td>Which direction the next read will use, and that Git will not be modified.</td></tr>
+      <tr><td>The banner “This review is reversed.”</td><td>The review runs backwards. Added and removed lines are swapped relative to the later version. The repository was not changed.</td></tr>
+      <tr><td>The note on Recommendations</td><td>What each level means, that level 3 is omitted because there is no probability model, and that dismiss, save, and completed stay in this browser.</td></tr>
+      <tr><td>Empty recommendation list</td><td>“No recommendation met the evidence rules.” The list is not filled with general advice.</td></tr>
+      <tr><td>Conceptual, marked EXPERIMENTAL</td><td>The topic groups are a guess and are often wrong.</td></tr>
+      <tr><td>Limits and history</td><td>What the review cannot establish, beside the history counts.</td></tr>
+      <tr><td>Integrations, last paragraph</td><td>Hosted services are not connected, and the reason is stated on the page.</td></tr>
+    </tbody>
+  </table>
+
+  <h1 class="ch">6. How to read the results</h1>
+  <table>
+    <caption>Table 7. Marks used on the screens</caption>
+    <thead><tr><th>Mark</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Sure</td><td>The call is written in the code.</td></tr>
+      <tr><td>Maybe</td><td>One step depends on an assumption. A call on <code>self</code> can be overridden by a subclass, so it stays maybe.</td></tr>
+      <tr><td>Old version only</td><td>The link was recorded in the older version and not in the newer one.</td></tr>
+      <tr><td>Plus and minus at the start of a diff line</td><td>Added text and removed text.</td></tr>
+      <tr><td>Connected only before</td><td>A test path that can be followed in the older version and not in the newer one.</td></tr>
+      <tr><td>Untraced calls</td><td>Calls inside a changed definition that could not be followed. This is a hole in the map, not proof that no call exists.</td></tr>
+    </tbody>
+  </table>
+  <p>When a page is quiet, read Limits and history before deciding what to do next. Then run the tests that were chosen. RepoTrace does not run them.</p>
+
+  <h1 class="ch">References</h1>
+  <p>[1] HiLCoE, School of Computer Science and Technology, “Senior Project Documentation Guideline,” version 1.4.3, 2024.</p>
+  <p>[2] Python Software Foundation, “Python 3 documentation.” [Online]. Available: https://docs.python.org/3/. [Accessed: Nov. 23, 2026].</p>
+  <p>[3] Git community, “Git documentation.” [Online]. Available: https://git-scm.com/doc. [Accessed: Nov. 23, 2026].</p>
+</section>
+</body>
+</html>

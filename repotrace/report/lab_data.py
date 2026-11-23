@@ -27,7 +27,7 @@ from repotrace.graph.graph_explore import Explorer, is_test_file
 from repotrace.graph.graph_index import GraphIndex
 from repotrace.graph.structure import build_structure
 from repotrace.report.overview import build_overview
-from repotrace.report.recommendations import build_recommendations
+from repotrace.report.recommendations import build_recommendations, tests_to_run_first
 
 CODE_LINES, CODE_CHARS = 30, 1600
 SNIPPET_CONTEXT = 2
@@ -452,10 +452,12 @@ def build_review(report, view, reports, repo=None, name='project'):
                            'test': is_test_file(cand['file']), 'for_node': node_of_change[idx]}
     affected = sorted(reach.values(), key=lambda a: (a['dist'], a['tier'], a['file'], a['name']))
 
-    tests, removed_tests = _merge_tests(report, nodes, after_by_id, node_of_change, by_file_name, src['after'])
+    all_connected, removed_tests = _merge_tests(report, nodes, after_by_id, node_of_change, by_file_name, src['after'])
     plan = report.get('test_plan') or build_test_plan(report['changes'])
-    by_test = {(t['file'], t['name']): t for t in tests}
+    by_test = {(t['file'], t['name']): t for t in all_connected}
     tests = [by_test[(t['file'], t['name'])] for t in plan['tests']]
+    selected = {(t['file'], t['name']) for t in tests}
+    tests_outside = [t for t in all_connected if (t['file'], t['name']) not in selected]
 
     unreadable = [f['file'] for r in reports.values() for f in r['files'] if f['status'] != 'ok']
     in_tests = sum(n.get('unres') or 0 for n in nodes if n['k'] == 'fn' and n['test'] and not n.get('gone'))
@@ -476,11 +478,13 @@ def build_review(report, view, reports, repo=None, name='project'):
               'label': subject or f"{len(changed)} changed definition{'s' if len(changed) != 1 else ''}",
               'base': version_name('base'), 'head': version_name('head'),
               'base_commit': report['base']['commit'], 'head_commit': report['head']['commit'], 'story': view.get('story'), 'changed': changed,
-              'concerns': concerns[:14], 'candidates': candidates[:10], 'affected': affected, 'tests': tests, 'removed_tests': removed_tests, 'history': hints,
+              'concerns': concerns[:14], 'candidates': candidates[:10], 'affected': affected, 'tests': tests,
+              'tests_outside': tests_outside, 'removed_tests': removed_tests, 'history': hints,
               'test_plan': {k: v for k, v in plan.items() if k != 'tests'},
               'history_window': window, 'gaps': [g for g in gaps if g]}
     review['unresolved'] = _unresolved_calls(nodes, changed)
     review['recommendations'] = build_recommendations(review)
+    review['test_recommendations'] = tests_to_run_first(review)
     return review, after_graph
 
 

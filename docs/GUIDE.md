@@ -1,5 +1,7 @@
 # RepoTrace guide: run any project we tried, and what each example shows
 
+The guided screens (`python3 -m repotrace --lab`) are described in the submission user manual: [RepoTrace_User_Manual.pdf](RepoTrace_User_Manual.pdf). This file is the earlier screen and the example gallery.
+
 ## Start the app (pick one)
 - **Double-click `RepoTrace.command`** in Finder. Your browser opens the app.
 - Or in a terminal: `python3 -m repotrace` (add a folder to open a project directly: `python3 -m repotrace "/path/to/project"`).
