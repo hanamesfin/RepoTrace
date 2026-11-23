@@ -827,8 +827,51 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                     if not ws:
                         self.json(404, {'error': 'Workspace not found.'})
                         return
-                    if Path(ws['repo']).is_dir():
+                    if data.get('fetch'):
+                        ws = workspaces.fetch_workspace_updates(ws_id)
+                    elif Path(ws['repo']).is_dir():
                         ws = workspaces.auto_capture_versions(ws_id, ws['repo'])
+                    self.json(200, ws)
+                elif path == '/api/workspace/upload-version':
+                    ws_id = data.get('id', '')
+                    ws = workspaces.get_workspace(ws_id)
+                    if not ws:
+                        self.json(404, {'error': 'Workspace not found.'})
+                        return
+                    mode = data.get('mode', 'folder')
+                    if mode == 'folder':
+                        repo = data.get('repo') or ws['repo']
+                        ws = workspaces.update_workspace_repo(ws_id, repo)
+                    elif mode == 'fetch':
+                        ws = workspaces.fetch_workspace_updates(ws_id)
+                    elif mode == 'commit':
+                        ws = workspaces.add_version(
+                            ws_id=ws_id,
+                            commit=data.get('commit', ''),
+                            subject=data.get('subject', ''),
+                            author=data.get('author', ''),
+                            branch=data.get('branch', ''),
+                        )
+                    self.json(200, ws)
+                elif path == '/api/workspace/add-repo':
+                    repo = str(data.get('repo', '')).strip()
+                    if not repo:
+                        raise ValueError('Choose a project folder.')
+                    ws_id = data.get('id')
+                    if ws_id:
+                        ws = workspaces.get_workspace(ws_id)
+                        if not ws:
+                            self.json(404, {'error': 'Workspace not found.'})
+                            return
+                        ws = workspaces.update_workspace_repo(ws_id, repo)
+                    else:
+                        name = str(data.get('name') or Path(repo).name).strip()
+                        ws = workspaces.create_workspace(name=name, repo=repo)
+                        if Path(ws['repo']).is_dir():
+                            try:
+                                ws = workspaces.auto_capture_versions(ws['id'], ws['repo'])
+                            except Exception:
+                                pass
                     self.json(200, ws)
                 elif path == '/api/workspace/rename':
                     ws = workspaces.rename_workspace(

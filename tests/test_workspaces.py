@@ -172,6 +172,26 @@ class TestWorkspaceServerAPI(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertGreaterEqual(len(refreshed['versions']), 2)
 
+        # 5b. Upload new version to workspace
+        status, uploaded = self.call('POST', '/api/workspace/upload-version', {
+            'id': ws['id'],
+            'mode': 'commit',
+            'commit': '9998887776',
+            'subject': 'Uploaded manual version',
+            'author': 'Tester',
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(any(v['commit'] == '9998887776' for v in uploaded['versions']))
+
+        # 5c. Add repo to workspace / create via add-repo
+        status, added_ws = self.call('POST', '/api/workspace/add-repo', {
+            'repo': str(self.repo),
+            'name': 'Added From Repo',
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(added_ws['name'], 'Added From Repo')
+        self.assertGreaterEqual(len(added_ws['versions']), 2)
+
         # 6. Rename workspace
         status, renamed = self.call('POST', '/api/workspace/rename', {'id': ws['id'], 'name': 'Renamed WS'})
         self.assertEqual(status, 200)

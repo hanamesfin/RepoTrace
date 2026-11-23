@@ -404,18 +404,33 @@
       const pills = [['workspace','Workspace',ico('workspace')],['explore','Map only',ico('map')],['remote','Clone',ico('clone')],['ssh','SSH',ico('term')],['github','GitHub',mark('github','gh')],['gitlab','GitLab',mark('gitlab','gl')],['azure','Azure DevOps',mark('azure','az')]];
       const recentCards = info.recent.map((item, index) => {
         const when = ago(item.opened);
-        return `<article class="recent-card${index > 2 ? ' is-extra' : ''}" ${index > 2 ? 'hidden' : ''}><span class="recent-mark" aria-hidden="true">${ico('folder')}</span><div class="recent-id"><strong>${h(item.name || 'Folder')}</strong><small>${h(item.path)}</small></div>${when ? `<time>${h(when)}</time>` : ''}<button type="button" class="recent-open" data-path="${h(item.path)}">Open</button></article>`;
+        return `<article class="recent-card${index > 2 ? ' is-extra' : ''}" ${index > 2 ? 'hidden' : ''}><span class="recent-mark" aria-hidden="true">${ico('folder')}</span><div class="recent-id"><strong>${h(item.name || 'Folder')}</strong><small>${h(item.path)}</small></div>${when ? `<time>${h(when)}</time>` : ''}<div class="recent-actions"><button type="button" class="recent-open" data-path="${h(item.path)}">Open</button><button type="button" class="recent-ws-btn secondary" data-ws-add="${h(item.path)}" title="Track in Workspace">+ Workspace</button></div></article>`;
       }).join('');
       const recent = info.recent.length ? `<section class="recent-block" aria-labelledby="recents-title"><div class="recent-head"><h2 id="recents-title">Recent Projects</h2>${info.recent.length > 3 ? '<button type="button" class="see-all" id="see-all">See all</button>' : ''}</div><div class="recent-list">${recentCards}</div></section>` : '';
       const wsItems = (info.workspaces || []).slice(0, 4);
       const wsSection = wsItems.length ? `<section class="ws-block" aria-labelledby="ws-title"><div class="recent-head"><h2 id="ws-title">Workspaces</h2><button type="button" class="see-all" data-panel="workspace">See all</button></div><div class="ws-mini-list">${wsItems.map(ws => `<article class="ws-mini-card"><span class="ws-mini-mark" aria-hidden="true">${ico('workspace')}</span><div><strong>${h(ws.name)}</strong><small>${h(ws.repo_name || '')} · ${ws.version_count || 0} versions</small></div><button type="button" class="ws-mini-open" data-ws-mini="${h(ws.id)}">Open</button></article>`).join('')}</div></section>` : '';
       const status = githubSignedIn(gh) ? gh.login : (gh.state === 'pending' ? 'Waiting' : 'Signed out');
       page(`<div class="open-stage"><header class="open-hero"><span class="spark" aria-hidden="true"></span><div><h1>Open a Project</h1><p>Choose a folder, clone a repo, or browse your projects</p></div></header>
-        <form id="open-form" class="drop-card"><div class="drop-art" aria-hidden="true"><span class="orbit"></span><span class="folder-glyph">${ico('folder')}</span><span class="plus">+</span></div><div class="drop-main"><p class="drop-title">Drag and drop a folder here</p><input id="repo-path" aria-label="Path to the project folder" placeholder="or paste a path" value="${h(info.initial_repo || '')}" autocomplete="off" required><div class="drop-actions">${info.can_browse ? '<button type="button" class="ghost" id="browse">Browse Files</button>' : ''}<button class="primary" type="submit">Open Folder ${ico('arrow')}</button></div></div></form>
+        <form id="open-form" class="drop-card"><div class="drop-art" aria-hidden="true"><span class="orbit"></span><span class="folder-glyph">${ico('folder')}</span><span class="plus">+</span></div><div class="drop-main"><p class="drop-title">Drag and drop a folder here</p><input id="repo-path" aria-label="Path to the project folder" placeholder="or paste a path" value="${h(info.initial_repo || '')}" autocomplete="off" required><div class="ws-attach-row"><label class="check"><input type="checkbox" id="attach-ws-check"><span>Track in Workspace</span></label><select id="attach-ws-select" class="ws-select" hidden><option value="">+ New Workspace…</option>${(info.workspaces || []).map(w => `<option value="${h(w.id)}">${h(w.name)}</option>`).join('')}</select></div><div class="drop-actions">${info.can_browse ? '<button type="button" class="ghost" id="browse">Browse Files</button>' : ''}<button class="primary" type="submit">Open Folder ${ico('arrow')}</button></div></div></form>
         <nav class="open-pills" aria-label="Ways to open"><button type="button" class="pill is-on" aria-current="page">${ico('folder')}<span>Recent</span></button>${pills.map(([id, title, icon]) => `<button type="button" class="pill" data-panel="${id}">${icon}<span>${h(title)}</span></button>`).join('')}<button type="button" class="pill pill-state" data-panel="github">${ico('user')}<span>${h(status)}</span></button></nav>
         ${recent}${wsSection}<div class="notice" id="picker-error" hidden></div><aside class="open-tip" id="open-tip" hidden><span>Tip: You can also drag a folder here</span><button type="button" id="tip-close" aria-label="Dismiss tip">×</button></aside></div>`);
-      const go = () => { const path = $('repo-path').value.trim(); if (!path) { fail('Type or paste the project folder, or use Browse Files.'); return; } openCompare(path); };
+      const go = async () => {
+        const path = $('repo-path').value.trim();
+        if (!path) { fail('Type or paste the project folder, or use Browse Files.'); return; }
+        const attach = $('attach-ws-check')?.checked;
+        if (attach) {
+          const wsId = $('attach-ws-select')?.value;
+          try {
+            const ws = await api('/api/workspace/add-repo', { repo: path, id: wsId || undefined });
+            openWorkspace(ws.id);
+            return;
+          } catch (e) { fail(e.message); return; }
+        }
+        openCompare(path);
+      };
       $('open-form').addEventListener('submit', ev => { ev.preventDefault(); go(); });
+      const wsCheck = $('attach-ws-check'), wsSelect = $('attach-ws-select');
+      if (wsCheck && wsSelect) { wsCheck.addEventListener('change', () => { wsSelect.hidden = !wsCheck.checked; }); }
       const zone = $('open-form');
       zone.addEventListener('dragover', ev => { ev.preventDefault(); zone.classList.add('is-over'); });
       zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
@@ -445,6 +460,22 @@
       document.querySelectorAll('[data-panel]').forEach(button => button.addEventListener('click', () => show(button.dataset.panel)));
       document.querySelectorAll('[data-path]').forEach(button => button.addEventListener('click', () => openCompare(button.dataset.path)));
       document.querySelectorAll('[data-ws-mini]').forEach(btn => btn.addEventListener('click', () => openWorkspace(btn.dataset.wsMini)));
+      document.querySelectorAll('[data-ws-add]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const path = btn.dataset.wsAdd;
+          const wsList = (info.workspaces || []);
+          let chosenId = undefined;
+          if (wsList.length) {
+            const promptText = `Add "${path.split('/').pop()}" to workspace:\nEnter number (1-${wsList.length}) or leave blank for a new workspace:\n` + wsList.map((w, i) => `${i + 1}. ${w.name}`).join('\n');
+            const ans = prompt(promptText);
+            if (ans && wsList[parseInt(ans, 10) - 1]) chosenId = wsList[parseInt(ans, 10) - 1].id;
+          }
+          try {
+            const ws = await api('/api/workspace/add-repo', { repo: path, id: chosenId });
+            openWorkspace(ws.id);
+          } catch (e) { fail(e.message); }
+        });
+      });
     }
 
     try { info = await api('/api/state'); } catch (e) { /* the menu still opens without the recent list */ }
@@ -484,8 +515,21 @@
           <div class="action-bar"><button class="primary" type="submit">Analyse ${ico('arrow')}</button></div>
         </form>
       </section>` : '<div class="notice neutral"><strong>Need at least 2 versions to compare.</strong><p>Push another commit or add a version to start comparing.</p></div>'}
+      <section class="card ws-upload-card" aria-labelledby="ws-upload-title">
+        <div class="card-head"><h2 id="ws-upload-title">${ico('upload')} Upload / Add New Version</h2></div>
+        <p class="help-text">Add a new version to this workspace using any option from the open page. It will be recorded alongside previous versions for instant comparison and change impact analysis.</p>
+        <nav class="ws-tabs" aria-label="Upload options">
+          <button type="button" class="pill is-on" data-ws-tab="folder">${ico('folder')}<span>Folder</span></button>
+          <button type="button" class="pill" data-ws-tab="fetch">${ico('download')}<span>Git Fetch</span></button>
+          <button type="button" class="pill" data-ws-tab="clone">${ico('clone')}<span>Clone URL</span></button>
+          <button type="button" class="pill" data-ws-tab="ssh">${ico('term')}<span>SSH</span></button>
+          <button type="button" class="pill" data-ws-tab="github">${mark('github','gh')}<span>GitHub</span></button>
+          <button type="button" class="pill" data-ws-tab="recent">${ico('folder')}<span>Recent</span></button>
+        </nav>
+        <div class="ws-tab-body" id="ws-tab-body"></div>
+      </section>
       <section class="card" aria-labelledby="ws-versions-title"><div class="card-head"><h2 id="ws-versions-title">Version History</h2><button type="button" class="small-button" id="ws-refresh">${ico('download')} Refresh</button></div>
-        ${versionRows || '<p class="help-text">No versions recorded yet. Refresh to capture the latest commits.</p>'}
+        ${versionRows || '<p class="help-text">No versions recorded yet. Refresh or upload above to capture commits.</p>'}
       </section>
       <section class="card"><div class="card-head"><h2>Explore Working Folder</h2></div>
         <p class="help-text">Map the current state of the project without comparing versions.</p>
@@ -493,6 +537,116 @@
       </section>
       <div class="notice" id="picker-error" hidden></div>
       <div class="action-row"><button class="secondary" id="ws-back">← All Workspaces</button><button class="text-button" id="ws-rename">Rename</button><button class="text-button ws-delete" id="ws-delete">Delete workspace</button></div>`);
+
+    function renderUploadTab(tab) {
+      const container = $('ws-tab-body');
+      if (!container) return;
+      document.querySelectorAll('.ws-tabs .pill').forEach(btn => {
+        btn.classList.toggle('is-on', btn.dataset.wsTab === tab);
+      });
+      if (tab === 'folder') {
+        container.innerHTML = `<form id="ws-tab-folder-form" class="stack">
+          <label class="field-label" for="ws-tab-folder">Project folder path to upload / track</label>
+          <div class="search-form open-form">
+            <span class="search-icon" aria-hidden="true">${ico('folder')}</span>
+            <input id="ws-tab-folder" placeholder="/path/to/project" value="${h(ws.repo || '')}" required autocomplete="off">
+            <button type="button" class="secondary" id="ws-tab-browse">Browse…</button>
+            <button class="primary" type="submit">Upload Version ${ico('arrow')}</button>
+          </div>
+        </form>`;
+        const browse = $('ws-tab-browse');
+        if (browse) browse.addEventListener('click', async () => {
+          try { const picked = await api('/api/browse', {}); if (picked.path) $('ws-tab-folder').value = picked.path; }
+          catch (e) { fail(e.message); }
+        });
+        $('ws-tab-folder-form').addEventListener('submit', async ev => {
+          ev.preventDefault();
+          const folder = $('ws-tab-folder').value.trim();
+          if (!folder) { fail('Choose a folder.'); return; }
+          try {
+            const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: folder });
+            stepWorkspace(boot, updated);
+          } catch (e) { fail(e.message); }
+        });
+      } else if (tab === 'fetch') {
+        container.innerHTML = `<div class="ws-tab-panel">
+          <p class="help-text">Check the remote repository for newly pushed commits and record them into this workspace.</p>
+          <div class="action-row"><button type="button" class="primary" id="ws-tab-fetch-btn">Fetch Remote Commits ${ico('download')}</button></div>
+        </div>`;
+        $('ws-tab-fetch-btn')?.addEventListener('click', async () => {
+          $('ws-tab-fetch-btn').disabled = true;
+          try {
+            const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'fetch' });
+            stepWorkspace(boot, updated);
+          } catch (e) {
+            if ($('ws-tab-fetch-btn')) $('ws-tab-fetch-btn').disabled = false;
+            fail(e.message);
+          }
+        });
+      } else if (tab === 'clone') {
+        container.innerHTML = `<form id="ws-tab-clone-form" class="stack">
+          <label class="field-label" for="ws-tab-clone-url">Repository URL</label>
+          <div class="search-form open-form">
+            <input id="ws-tab-clone-url" placeholder="https://host/owner/repo.git" required autocomplete="off">
+            <button class="primary" type="submit">Clone & Add Version ${ico('arrow')}</button>
+          </div>
+        </form>`;
+        $('ws-tab-clone-form').addEventListener('submit', async ev => {
+          ev.preventDefault();
+          const url = $('ws-tab-clone-url').value.trim();
+          try {
+            const plan = await api('/api/clone', { url, kind: 'https' });
+            if (plan.blocked) { fail(plan.dest + ' already exists and is not a Git clone.'); return; }
+            const done = await api('/api/clone', { url, kind: 'https', confirm: plan.dest });
+            const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: done.repo });
+            stepWorkspace(boot, updated);
+          } catch (e) { fail(e.message); }
+        });
+      } else if (tab === 'ssh') {
+        container.innerHTML = `<form id="ws-tab-ssh-form" class="stack">
+          <label class="field-label" for="ws-tab-ssh-url">SSH repository address</label>
+          <div class="search-form open-form">
+            <input id="ws-tab-ssh-url" placeholder="git@host:owner/repo.git" required autocomplete="off">
+            <button class="primary" type="submit">Connect & Add Version ${ico('arrow')}</button>
+          </div>
+        </form>`;
+        $('ws-tab-ssh-form').addEventListener('submit', async ev => {
+          ev.preventDefault();
+          const url = $('ws-tab-ssh-url').value.trim();
+          try {
+            const plan = await api('/api/clone', { url, kind: 'ssh' });
+            if (plan.blocked) { fail(plan.dest + ' already exists and is not a Git clone.'); return; }
+            const done = await api('/api/clone', { url, kind: 'ssh', confirm: plan.dest });
+            const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: done.repo });
+            stepWorkspace(boot, updated);
+          } catch (e) { fail(e.message); }
+        });
+      } else if (tab === 'github') {
+        container.innerHTML = `<div class="ws-tab-panel" id="ws-gh-tab-panel">
+          <p class="help-text">Connect to GitHub to select a repository and add its latest version to this workspace.</p>
+          <div class="action-row"><button type="button" class="secondary" id="ws-gh-open-btn">${mark('github','gh')} Open GitHub Options</button></div>
+        </div>`;
+        $('ws-gh-open-btn')?.addEventListener('click', () => { showGitHub(); });
+      } else if (tab === 'recent') {
+        const recentList = (info.recent || []);
+        container.innerHTML = `<div class="ws-tab-panel">
+          ${recentList.length ? `<div class="ws-mini-list">${recentList.map(r => `<article class="ws-mini-card"><span class="ws-mini-mark">${ico('folder')}</span><div><strong>${h(r.name || 'Folder')}</strong><small>${h(r.path)}</small></div><button type="button" class="ws-mini-open ws-up-rec" data-rec-repo="${h(r.path)}">Add Version</button></article>`).join('')}</div>` : '<p class="help-text">No recent projects found.</p>'}
+        </div>`;
+        container.querySelectorAll('.ws-up-rec').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: btn.dataset.recRepo });
+              stepWorkspace(boot, updated);
+            } catch (e) { btn.disabled = false; fail(e.message); }
+          });
+        });
+      }
+    }
+    document.querySelectorAll('.ws-tabs [data-ws-tab]').forEach(btn => {
+      btn.addEventListener('click', () => renderUploadTab(btn.dataset.wsTab));
+    });
+    renderUploadTab('folder');
 
     // Bindings
     const goBack = () => { stepOne(boot); };
@@ -554,7 +708,9 @@
     const label = c => `${c.short} · ${c.subject || '(no message)'} · ${c.date}`;
     const options = selected => commits.map((c, i) => `<option value="${h(c.commit)}" ${i === selected ? 'selected' : ''}>${h(label(c))}</option>`).join('');
     const can = commits.length >= 2;
+    const wsBar = `<div class="ws-attach-bar"><span class="ws-mini-mark" aria-hidden="true">${ico('workspace')}</span><span class="ws-attach-text">Track this project in a workspace to record all versions</span><button type="button" class="small-button secondary" id="ws-save-btn">+ Save to Workspace</button></div>`;
     page(`<div class="page-header"><span class="eyebrow">${h(info.name)} · ${h(info.current_branch)}</span><h1>Choose what to compare</h1><p>${commits.length} commit${commits.length === 1 ? '' : 's'} found. ${info.dirty ? 'You have unsaved changes: the map shows your working folder; the comparison uses saved commits only. ' : ''}${h((info.source_roots || {}).reason || '')}</p></div>
+      ${wsBar}
       <form id="go-form" class="go-form">
       ${can ? `<section class="card" aria-labelledby="cmp-title"><div class="card-head"><h2 id="cmp-title">Check a change</h2><label class="check"><input type="checkbox" id="skip"><span>Only explore the map</span></label></div>
         <div class="pair" id="pair">
@@ -593,6 +749,19 @@
       form.addEventListener('change', ev => { if (ev.target.name === 'reverse') flip(describe); else if (ev.target.id === 'skip') explore(); });
       $('swap').addEventListener('click', () => { document.querySelector(`input[name="reverse"][value="${asked() ? 'no' : 'yes'}"]`).checked = true; flip(describe); });
     }
+    $('ws-save-btn')?.addEventListener('click', async () => {
+      const name = prompt('Workspace name for this project:', info.name || 'My Project');
+      if (!name || !name.trim()) return;
+      try {
+        const ws = await api('/api/workspace/add-repo', { repo: info.repo, name: name.trim() });
+        const box = $('picker-error');
+        if (box) {
+          box.className = 'notice';
+          box.innerHTML = `<strong>Tracked in workspace "${h(ws.name)}"!</strong><p>${ws.versions?.length || 0} versions recorded. You can compare any version in this workspace anytime.</p>`;
+          box.hidden = false;
+        }
+      } catch (e) { fail(e.message); }
+    });
     $('back-to-open').addEventListener('click', () => stepOne(boot));
     form.addEventListener('submit', async ev => {
       ev.preventDefault();

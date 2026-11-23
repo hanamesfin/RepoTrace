@@ -147,7 +147,42 @@ def delete_workspace(ws_id, root=None):
     return False
 
 
-def auto_capture_versions(ws_id, repo, limit=20, root=None):
+def update_workspace_repo(ws_id, new_repo, root=None):
+    """Update the repository folder of a workspace and capture its latest versions."""
+    ws = _load(ws_id, root)
+    if ws is None:
+        raise ValueError('Workspace not found.')
+    new_repo = str(new_repo or '').strip()
+    p = Path(new_repo)
+    if not p.is_dir():
+        raise ValueError('The project folder does not exist.')
+    ws['repo'] = str(p.resolve())
+    ws['repo_name'] = p.name
+    ws['updated'] = int(time.time() * 1000)
+    _save(ws, root)
+    return auto_capture_versions(ws_id, ws['repo'], root=root)
+
+
+def fetch_workspace_updates(ws_id, root=None):
+    """Run git fetch on the workspace repository if a remote exists, then capture new versions."""
+    from repotrace.changes.git_snapshot import run_git, GitError
+    ws = _load(ws_id, root)
+    if ws is None:
+        raise ValueError('Workspace not found.')
+    repo = ws.get('repo', '')
+    if not repo or not Path(repo).is_dir():
+        raise ValueError('The workspace project folder does not exist.')
+    try:
+        remotes = run_git(repo, 'remote').decode().strip().splitlines()
+        if remotes:
+            remote_name = 'origin' if 'origin' in remotes else remotes[0].strip()
+            run_git(repo, 'fetch', '--prune', remote_name)
+    except GitError:
+        pass  # fetch may fail if offline; still capture local commits
+    return auto_capture_versions(ws_id, repo, limit=50, root=root)
+
+
+def auto_capture_versions(ws_id, repo, limit=50, root=None):
     """Read the latest commits from the repo and add them as versions.
 
     This is called when opening a workspace to keep it up-to-date.
@@ -162,12 +197,15 @@ def auto_capture_versions(ws_id, repo, limit=20, root=None):
                         '--format=%H%x09%cs%x09%an%x09%s').decode('utf-8', 'replace').splitlines()
     except GitError:
         return ws  # the repo may have been moved; don't crash
-    for line in lines:
+    existing = {v['commit'] for v in ws.get('versions', [])}
+    # Add commits in chronological order (oldest to newest)
+    for line in reversed(lines):
         parts = (line.split('\t') + [''] * 4)[:4]
         commit, date, author, subject = parts
-        if not commit:
+        if not commit or commit in existing:
             continue
         add_version(ws_id, commit, subject=subject, author=author, root=root)
+        existing.add(commit)
     # reload after all additions
     return _load(ws_id, root)
 
