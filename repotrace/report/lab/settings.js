@@ -13,6 +13,7 @@
     motion: 'system',
     railSide: 'left',
     railMode: 'labels',
+    railMinimized: false,
     uiFont: 'system',
     codeFont: 'system',
     uiSize: 14,
@@ -94,6 +95,14 @@
     return (1.05 / (level + 0.05)) >= ((level + 0.05) / 0.05) ? '#ffffff' : '#0b0d10';
   }
 
+  function toggleRailMinimized() {
+    var settings = load();
+    settings.railMinimized = !settings.railMinimized;
+    save(settings);
+    overlay();
+    return settings.railMinimized;
+  }
+
   function overlay() {
     var settings = load();
     var root = document.documentElement;
@@ -102,6 +111,7 @@
     root.setAttribute('data-motion', settings.motion);
     root.setAttribute('data-rail-side', settings.railSide);
     root.setAttribute('data-rail-mode', settings.railMode);
+    root.setAttribute('data-rail-minimized', settings.railMinimized ? 'true' : 'false');
     root.setAttribute('data-contrast', settings.contrast);
     root.setAttribute('data-focus', settings.focus);
     root.setAttribute('data-cues', settings.cues);
@@ -114,6 +124,19 @@
     root.style.setProperty('--ui-tracking', settings.tracking + 'em');
     root.style.setProperty('--ui-weight', String(settings.weight));
     root.style.setProperty('--ui-ligatures', settings.ligatures ? 'common-ligatures' : 'none');
+    var isMin = !!settings.railMinimized;
+    var railMinBtn = document.getElementById('rail-minimizer');
+    if (railMinBtn) {
+      railMinBtn.innerHTML = '<svg><use href="#i-sidebar-' + (isMin ? 'expand' : 'collapse') + '"/></svg>';
+      railMinBtn.title = (isMin ? 'Expand' : 'Collapse') + ' sidebar (⌘B)';
+      railMinBtn.setAttribute('aria-label', (isMin ? 'Expand' : 'Collapse') + ' sidebar');
+    }
+    var topToggleBtn = document.getElementById('sidebar-toggle');
+    if (topToggleBtn) {
+      topToggleBtn.innerHTML = '<svg><use href="#i-sidebar-' + (isMin ? 'expand' : 'collapse') + '"/></svg>';
+      topToggleBtn.title = (isMin ? 'Expand' : 'Collapse') + ' sidebar (⌘B)';
+      topToggleBtn.setAttribute('aria-label', (isMin ? 'Expand' : 'Collapse') + ' sidebar');
+    }
     var page = (Number(settings.scale) || 100) / 100;
     var zoom = page;
     /* The map lives in a frame inside this page, so the frame inherits this zoom. It must not zoom again. */
@@ -242,6 +265,135 @@
     return '<input data-key="' + key + '" type="checkbox"' + (current ? ' checked' : '') + '>';
   }
 
+  function getToken() {
+    var meta = document.querySelector('meta[name="rt-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
+  function apiCall(endpoint, method, body) {
+    var token = getToken();
+    var headers = {'Content-Type': 'application/json'};
+    if (token) headers['X-RepoTrace-Token'] = token;
+    var opts = {method: method || 'GET', headers: headers};
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(endpoint, opts).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+        return data;
+      });
+    });
+  }
+
+  function renderDefaultGitHtml() {
+    return '<p class="help-text">Connect to GitHub, GitLab, or Azure DevOps to clone, sync repositories, and build multi-version review workspaces.</p><div id="git-integrations-panel" class="integration-grid">'
+      + '<article class="integration-card" id="int-github"><div class="integration-card-head"><span class="integration-title"><svg class="ico" viewBox="0 0 24 24" style="fill:currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg> GitHub</span><span class="integration-badge disconnected" id="gh-badge">Checking…</span></div><div class="integration-body" id="gh-body"><p class="integration-help">Reading GitHub sign-in…</p></div></article>'
+      + '<article class="integration-card" id="int-gitlab"><div class="integration-card-head"><span class="integration-title"><svg class="ico" viewBox="0 0 24 24" fill="#fc6d26"><path d="M23.6 9.58L20.8 1.04a.97.97 0 0 0-1.84 0l-2.8 8.54H7.84L5.04 1.04a.97.97 0 0 0-1.84 0L.4 9.58a1.9 1.9 0 0 0 .69 2.12l10.91 7.93 10.91-7.93a1.9 1.9 0 0 0 .69-2.12z"/></svg> GitLab</span><span class="integration-badge disconnected" id="gl-badge">Checking…</span></div><div class="integration-body" id="gl-body"><p class="integration-help">Reading GitLab sign-in…</p></div></article>'
+      + '<article class="integration-card" id="int-azure"><div class="integration-card-head"><span class="integration-title"><svg class="ico" viewBox="0 0 24 24" fill="#0078d4"><path d="M0 8.877L4.76 5.5l9.24 4.307L6.037 17.5 0 8.877zm24 6.246l-4.76 3.377-9.24-4.307L17.963 6.5 24 15.123z"/></svg> Azure DevOps</span><span class="integration-badge disconnected" id="az-badge">Checking…</span></div><div class="integration-body" id="az-body"><p class="integration-help">Reading Azure DevOps sign-in…</p></div></article>'
+      + '</div>';
+  }
+
+  function paintIntegrations(root) {
+    var panel = root.querySelector('#git-integrations-panel');
+    if (!panel) return;
+    apiCall('/api/integrations/status').then(function (data) {
+      // 1. GitHub
+      var gh = data.github || {};
+      var ghBadge = root.querySelector('#gh-badge');
+      var ghBody = root.querySelector('#gh-body');
+      if (ghBadge && ghBody) {
+        if (gh.signed_in && gh.login) {
+          ghBadge.textContent = 'Connected';
+          ghBadge.className = 'integration-badge connected';
+          ghBody.innerHTML = '<p>Signed in as <strong>@' + escape(gh.login) + '</strong>.</p><div class="integration-actions"><button type="button" class="secondary" id="gh-btn-logout">Sign out</button></div>';
+          var btn = ghBody.querySelector('#gh-btn-logout');
+          if (btn) btn.addEventListener('click', function () {
+            btn.disabled = true;
+            apiCall('/api/github/logout', 'POST', {}).then(function () { paintIntegrations(root); }).catch(function (e) { alert(e.message); btn.disabled = false; });
+          });
+        } else if (gh.state === 'pending') {
+          ghBadge.textContent = 'Pending';
+          ghBadge.className = 'integration-badge pending';
+          ghBody.innerHTML = '<p>Device Code: <strong style="font-family:var(--mono);font-size:16px">' + escape(gh.user_code) + '</strong></p><p><a href="https://github.com/login/device" target="_blank" rel="noopener noreferrer">https://github.com/login/device</a></p>';
+          setTimeout(function () { paintIntegrations(root); }, 2500);
+        } else {
+          ghBadge.textContent = 'Disconnected';
+          ghBadge.className = 'integration-badge disconnected';
+          ghBody.innerHTML = '<form id="gh-token-form" class="integration-form"><input id="gh-token-input" type="password" placeholder="GitHub Personal Access Token" class="integration-input" required><div class="integration-actions"><button type="submit" class="secondary">Save Token</button></div></form><p class="integration-help">Supports standard GitHub tokens or device sign-in flow.</p>';
+          var form = ghBody.querySelector('#gh-token-form');
+          if (form) form.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var inp = form.querySelector('#gh-token-input');
+            if (inp && inp.value) {
+              apiCall('/api/github/token', 'POST', {token: inp.value}).then(function () { paintIntegrations(root); }).catch(function (e) { alert(e.message); });
+            }
+          });
+        }
+      }
+
+      // 2. GitLab
+      var gl = data.gitlab || {};
+      var glBadge = root.querySelector('#gl-badge');
+      var glBody = root.querySelector('#gl-body');
+      if (glBadge && glBody) {
+        if (gl.signed_in) {
+          glBadge.textContent = 'Connected';
+          glBadge.className = 'integration-badge connected';
+          glBody.innerHTML = '<p>Signed in as <strong>@' + escape(gl.login || gl.name || 'User') + '</strong><br><small style="color:var(--muted)">' + escape(gl.instance || 'https://gitlab.com') + '</small></p><div class="integration-actions"><button type="button" class="secondary" id="gl-btn-logout">Disconnect</button></div>';
+          var glLogout = glBody.querySelector('#gl-btn-logout');
+          if (glLogout) glLogout.addEventListener('click', function () {
+            glLogout.disabled = true;
+            apiCall('/api/gitlab/logout', 'POST', {}).then(function () { paintIntegrations(root); }).catch(function (e) { alert(e.message); glLogout.disabled = false; });
+          });
+        } else {
+          glBadge.textContent = 'Disconnected';
+          glBadge.className = 'integration-badge disconnected';
+          glBody.innerHTML = '<form id="gl-token-form" class="integration-form"><input id="gl-inst-input" type="text" placeholder="https://gitlab.com" value="' + escape(gl.instance || 'https://gitlab.com') + '" class="integration-input"><input id="gl-token-input" type="password" placeholder="GitLab Personal Access Token" class="integration-input" required><div class="integration-actions"><button type="submit" class="primary">Connect GitLab</button></div></form><p class="integration-help">Requires a Personal Access Token with <code>read_api</code> and <code>read_repository</code>.</p>';
+          var glForm = glBody.querySelector('#gl-token-form');
+          if (glForm) glForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var inst = (glForm.querySelector('#gl-inst-input') || {}).value || 'https://gitlab.com';
+            var tok = (glForm.querySelector('#gl-token-input') || {}).value;
+            if (tok) {
+              apiCall('/api/gitlab/token', 'POST', {token: tok, instance: inst}).then(function () { paintIntegrations(root); }).catch(function (e) { alert(e.message); });
+            }
+          });
+        }
+      }
+
+      // 3. Azure DevOps
+      var az = data.azure || {};
+      var azBadge = root.querySelector('#az-badge');
+      var azBody = root.querySelector('#az-body');
+      if (azBadge && azBody) {
+        if (az.signed_in) {
+          azBadge.textContent = 'Connected';
+          azBadge.className = 'integration-badge connected';
+          azBody.innerHTML = '<p>Signed in to organization <strong>' + escape(az.organization || '') + '</strong></p><div class="integration-actions"><button type="button" class="secondary" id="az-btn-logout">Disconnect</button></div>';
+          var azLogout = azBody.querySelector('#az-btn-logout');
+          if (azLogout) azLogout.addEventListener('click', function () {
+            azLogout.disabled = true;
+            apiCall('/api/azure/logout', 'POST', {}).then(function () { paintIntegrations(root); }).catch(function (e) { alert(e.message); azLogout.disabled = false; });
+          });
+        } else {
+          azBadge.textContent = 'Disconnected';
+          azBadge.className = 'integration-badge disconnected';
+          azBody.innerHTML = '<form id="az-token-form" class="integration-form"><input id="az-org-input" type="text" placeholder="Organization (e.g. dev.azure.com/myorg)" value="' + escape(az.organization || '') + '" class="integration-input" required><input id="az-token-input" type="password" placeholder="Azure DevOps PAT Token" class="integration-input" required><div class="integration-actions"><button type="submit" class="primary">Connect Azure</button></div></form><p class="integration-help">Requires a Personal Access Token with <code>Code (Read)</code> scope.</p>';
+          var azForm = azBody.querySelector('#az-token-form');
+          if (azForm) azForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var org = (azForm.querySelector('#az-org-input') || {}).value;
+            var tok = (azForm.querySelector('#az-token-input') || {}).value;
+            if (tok && org) {
+              apiCall('/api/azure/token', 'POST', {token: tok, organization: org}).then(function () { paintIntegrations(root); }).catch(function (e) { alert(e.message); });
+            }
+          });
+        }
+      }
+    }).catch(function (err) {
+      console.warn('Failed to load integrations status:', err);
+    });
+  }
+
   function render(parts) {
     var settings = load();
     var theme = window.RTTheme ? RTTheme.get(RTTheme.current()) : {name: 'Theme'};
@@ -269,7 +421,7 @@
       return '<button type="button" class="mode-choice' + (on ? ' is-on' : '') + '" data-mode="' + item[0] + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + escape(item[1]) + '</button>';
     }).join('');
     var shown = function (id) { return id === current ? '' : ' hidden'; };
-    return '<div class="settings-shell"><nav class="settings-nav" aria-label="Settings sections"><input id="settings-q" type="search" placeholder="Search settings" aria-label="Search settings">' + links + '</nav><div class="settings-main"><header class="settings-head"><span class="eyebrow">SETTINGS</span><p id="settings-status">Saved on this computer. Nothing is uploaded.</p></header>'
+    return '<div class="settings-shell"><nav class="settings-nav" aria-label="Settings sections"><input id="settings-q" type="search" placeholder="Search settings" aria-label="Search settings">' + links + '</nav><div class="settings-main"><header class="settings-head"><div class="settings-title-row"><div><span class="eyebrow">SETTINGS</span><h1 style="margin:4px 0 2px;font-size:24px">Preferences & Configuration</h1><p id="settings-status">Saved on this computer. Nothing is uploaded.</p></div><button type="button" class="settings-close-btn" id="settings-close-btn" aria-label="Close Settings">← Back</button></div></header>'
       + '<section class="settings-block" id="set-appearance"' + shown('appearance') + '><h2>Appearance</h2><div class="preview-window" id="settings-preview"><div class="preview-top"><span></span><span></span><span></span><b>' + escape(theme.name) + '</b></div><p>Find what a change left behind.</p><div class="preview-chips"><span class="chip accent">Accent</span><span class="chip ok">Success</span><span class="chip warn">Warning</span><span class="chip bad">Error</span></div><pre class="settings-code">def changed(x):\n    return x</pre></div>'
       + '<div class="setting" data-setting="color mode dark light system"><span>Color mode</span><div class="mode-row">' + modeButtons + '</div><small>Dark and Light use the last theme you chose of that kind. Match the system follows this computer’s appearance. Choosing a theme below returns to that theme.</small></div>'
       + '<div class="setting" data-setting="accent color"><span>Accent</span><div class="accent-row">' + accents + '</div><small>Theme uses the accent from the selected theme. Another accent replaces it on buttons and focus.</small></div>'
@@ -294,7 +446,7 @@
       + field('cues', 'Status marks', select('cues', settings.cues, [['color', 'Color'], ['shape', 'Color and shape']]), 'Shape adds a dashed, solid, or dotted border so sure, maybe, and older-version marks are not color alone.')
       + field('scale', 'Page scale', select('scale', settings.scale, [[90, '90%'], [100, '100%'], [110, '110%'], [125, '125%']]), 'Scales this page. 100% is the normal size.')
       + '<p class="help-text">Keyboard navigation is always available. A system screen reader reads the buttons, labels, and status text. There is no separate screen-reader mode to switch on.</p></section>'
-      + '<section class="settings-block" id="set-git"' + shown('git') + '><h2>Git and repositories</h2>' + (parts.gitHtml || '') + '<p class="help-text">GitLab and Azure DevOps are not connected. There is no OAuth client for them, and this page will not pretend a sign-in succeeded. SSH keys are not managed here.</p></section>'
+      + '<section class="settings-block" id="set-git"' + shown('git') + '><h2>Git and Cloud Accounts</h2>' + (parts.gitHtml || renderDefaultGitHtml()) + '</section>'
       + '<section class="settings-block" id="set-analysis"' + shown('analysis') + '><h2>Analysis</h2><p class="help-text">RepoTrace reads Python without running it. It does not score a change, and it does not offer a depth slider, a language pack, or a timeout control. Those limits belong to the analyzer, not to a switch on this page.</p>'
       + field('showPossible', 'Show possible links when a project opens', check('showPossible', settings.showPossible), 'Possible means one step is an assumption. This applies the next time a project is opened.')
       + '</section>'
@@ -466,6 +618,9 @@
     if (testNotice) testNotice.addEventListener('click', function () { notify('This is a test notice from Settings.', {testNotice: true, error: true}); setStatus('If the browser allows notices, one was sent.'); });
     var testSound = document.getElementById('settings-test-sound');
     if (testSound) testSound.addEventListener('click', function () { beep(); setStatus('The sound played.'); });
+    paintIntegrations(root);
+    var closeBtn = root.querySelector('#settings-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', function () { closeSettings(); });
     showSection(load().section || 'appearance', false);
   }
 
@@ -499,6 +654,37 @@
     }).join('');
   }
 
+  function closeSettings() {
+    var topSettings = document.getElementById('top-settings');
+    if (topSettings) {
+      topSettings.classList.remove('active');
+      topSettings.removeAttribute('aria-current');
+    }
+    var railSettings = document.getElementById('rail-settings-btn');
+    if (railSettings) {
+      railSettings.classList.remove('active');
+      railSettings.removeAttribute('aria-current');
+    }
+    if (window.RTLab && RTLab.current) {
+      RTLab.back();
+    } else if (window.RTPicker) {
+      window.RTPicker.start(window.RTLab);
+    }
+  }
+
+  function toggleSettings() {
+    var content = document.getElementById('content');
+    if (content && content.querySelector('.settings-shell')) {
+      closeSettings();
+    } else {
+      if (window.RTLab && RTLab.current) {
+        RTLab.go({page: 'settings', node: null, walk: false});
+      } else {
+        showBeforeProject();
+      }
+    }
+  }
+
   function showBeforeProject() {
     var content = document.getElementById('content');
     if (!content) return;
@@ -511,14 +697,14 @@
       topSettings.classList.add('active');
       topSettings.setAttribute('aria-current', 'page');
     }
-    var navSettings = document.querySelector('#navigation [data-action="settings"]');
-    if (navSettings) {
-      navSettings.classList.add('active');
-      navSettings.setAttribute('aria-current', 'page');
+    var railSettings = document.getElementById('rail-settings-btn');
+    if (railSettings) {
+      railSettings.classList.add('active');
+      railSettings.setAttribute('aria-current', 'page');
     }
     content.innerHTML = render({
       themeCards: themeCards(),
-      gitHtml: '<p class="help-text">Open a project to connect GitHub and to read the local Git status. GitLab and Azure DevOps stay disconnected.</p>'
+      gitHtml: renderDefaultGitHtml()
     });
     bind(content);
   }
@@ -526,6 +712,18 @@
   document.addEventListener('click', function (event) {
     var target = event.target && event.target.closest ? event.target : null;
     if (!target) return;
+    if (target.closest('#rail-minimizer') || target.closest('#sidebar-toggle')) {
+      toggleRailMinimized();
+      return;
+    }
+    if (target.closest('#rail-settings-btn') || target.closest('#top-settings') || target.closest('[data-action="settings"]')) {
+      toggleSettings();
+      return;
+    }
+    if (target.closest('#settings-close-btn')) {
+      closeSettings();
+      return;
+    }
     if (target.closest('.brand') || target.closest('[data-action="open-project"]') || target.closest('[data-action="open-file"]') || (target.closest('#back') && !target.closest('#back').disabled && document.getElementById('content') && document.getElementById('content').querySelector('.settings-shell') && (!window.RTLab || !RTLab.current))) {
       if (document.getElementById('content') && document.getElementById('content').querySelector('.settings-shell')) {
         if (window.RTPicker) {
@@ -535,15 +733,33 @@
       }
     }
     if (window.RTLab && RTLab.current) return;
-    if (target.closest('[data-action="settings"]')) {
-      showBeforeProject();
-      return;
-    }
     var card = target.closest('[data-theme-id]');
     if (card && document.getElementById('content') && document.getElementById('content').querySelector('.settings-shell')) {
       var chosen = RTTheme.apply(card.getAttribute('data-theme-id'));
       noteTheme(chosen);
       showBeforeProject();
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName);
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+      event.preventDefault();
+      toggleRailMinimized();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+      event.preventDefault();
+      toggleSettings();
+      return;
+    }
+    if (event.key === 'Escape' && !typing) {
+      var content = document.getElementById('content');
+      if (content && content.querySelector('.settings-shell')) {
+        event.preventDefault();
+        closeSettings();
+        return;
+      }
     }
   });
 
@@ -555,6 +771,10 @@
     quietNow: quietNow,
     render: render,
     bind: bind,
-    apply: syncTheme
+    apply: syncTheme,
+    toggleRailMinimized: toggleRailMinimized,
+    toggle: toggleSettings,
+    show: showBeforeProject,
+    close: closeSettings
   };
 })();

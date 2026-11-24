@@ -277,8 +277,11 @@ def git_invocation(args, token=None, hooks=None):
     return cmd, env
 
 
-def authorization_header(token):
-    return f'AUTHORIZATION: bearer {token}'
+def authorization_header(token, scheme='bearer'):
+    token_str = str(token).strip()
+    if token_str.lower().startswith(('bearer ', 'basic ')):
+        return f'AUTHORIZATION: {token_str}'
+    return f'AUTHORIZATION: {scheme} {token_str}'
 
 
 def empty_hooks_dir():

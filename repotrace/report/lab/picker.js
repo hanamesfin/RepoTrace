@@ -22,6 +22,7 @@
   };
   const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
   const took = seconds => seconds < 60 ? `${seconds.toFixed(1)} s` : clock(seconds);
+  let currentShowWorkspaces = null;
 
   async function api(path, body) {
     const res = await fetch(path, {method: body ? 'POST' : 'GET', headers: {'X-RepoTrace-Token': token, ...(body ? {'Content-Type': 'application/json'} : {})}, body: body ? JSON.stringify(body) : undefined});
@@ -191,7 +192,7 @@
     $('location').textContent = 'Open a project';
     const navEl = $('navigation');
     if (navEl) {
-      navEl.innerHTML = `<button class="nav-item" data-action="settings" title="Settings"><span class="nav-icon" aria-hidden="true">${ico('sliders')}</span><span class="nav-text">Settings</span></button>`;
+      navEl.innerHTML = `<button class="nav-item active" data-action="open-project" title="Open Project" aria-current="page"><span class="nav-icon" aria-hidden="true">${ico('folder')}</span><span class="nav-text">Open Project</span></button><button class="nav-item" data-action="workspaces" title="Workspaces"><span class="nav-icon" aria-hidden="true">${ico('home')}</span><span class="nav-text">Workspaces</span></button>`;
     }
     for (const id of ['project-card', 'rail-label']) { const el = $(id); if (el) el.hidden = true; }      // no project yet, so no project card
     document.querySelectorAll('[data-project]').forEach(el => { el.textContent = ''; });
@@ -200,6 +201,11 @@
     if (topSettings) {
       topSettings.classList.remove('active');
       topSettings.removeAttribute('aria-current');
+    }
+    const railSettings = $('rail-settings-btn');
+    if (railSettings) {
+      railSettings.classList.remove('active');
+      railSettings.removeAttribute('aria-current');
     }
     stepOne(boot);
   }
@@ -216,11 +222,16 @@
     githubEpoch += 1;
     clearTimeout(githubTimer);
     const epoch = githubEpoch;
+    const openBtn = document.querySelector('#navigation [data-action="open-project"]');
+    const wsNavBtn = document.querySelector('#navigation [data-action="workspaces"]');
+    if (openBtn) openBtn.classList.add('active');
+    if (wsNavBtn) wsNavBtn.classList.remove('active');
     let info = {recent: [], can_browse: false, initial_repo: null};
     let gh = {configured: false, signed_in: false, state: 'signed-out'};
     const row = (title, note, panel, extra) => `<button type="button" class="menu-row" data-panel="${h(panel)}" ${extra || ''}><span class="menu-copy"><strong>${h(title)}</strong><small>${h(note)}</small></span><span class="menu-go" aria-hidden="true">${ico('arrow')}</span></button>`;
     const backBar = '<div class="action-row"><button type="button" class="secondary" id="menu-back">All open options</button></div>';
     const leave = () => { githubEpoch += 1; clearTimeout(githubTimer); };
+    currentShowWorkspaces = () => showWorkspaces();
 
     async function openCompare(path) {
       const box = $('picker-error'); if (box) box.hidden = true;
@@ -312,11 +323,145 @@
       bindBack();
       mountGitHub(boot, epoch);
     }
-    function showUnavailable(which) {
-      const name = which === 'gitlab' ? 'GitLab' : 'Azure DevOps';
-      const logo = which === 'gitlab' ? mark('gitlab','gl') : mark('azure','az');
-      page(`${backBar}<div class="page-header"><span class="eyebrow">CONNECT</span><h1>${logo} ${name}</h1></div><div class="notice" role="status"><strong>${name} is not connected.</strong><p>This app has no ${name} OAuth client, so RepoTrace cannot sign you in. Nothing was connected.</p></div>`);
+    async function showGitLab() {
+      page(`${backBar}<section class="github-panel" id="gitlab-panel" aria-labelledby="gitlab-title"><div class="page-header"><span class="eyebrow">INTEGRATIONS</span><h1 id="gitlab-title">${mark('gitlab','gl')} GitLab</h1></div><div id="gitlab-content"><p class="help-text">Checking GitLab sign-in…</p></div><div class="notice" id="picker-error" hidden></div></section>`);
       bindBack();
+      const content = $('gitlab-content');
+      try {
+        const status = await api('/api/gitlab/status');
+        if (status.signed_in) {
+          content.innerHTML = `<div class="integration-actions" style="margin-bottom:14px;justify-content:space-between;flex-wrap:wrap"><p style="margin:0">Signed in as <strong>@${h(status.login || status.name || 'User')}</strong> · <small style="color:var(--muted)">${h(status.instance || 'https://gitlab.com')}</small></p><div style="display:flex;gap:8px"><button type="button" class="secondary" id="gl-refresh-btn">${ico('refresh')} Refresh</button><button type="button" class="secondary" id="gl-logout-btn">Disconnect</button></div></div><div class="search-form open-form" style="margin-bottom:16px"><span class="search-icon" aria-hidden="true">${ico('find')}</span><input id="gl-search-input" placeholder="Search your GitLab projects…" autocomplete="off"></div><div id="gl-repos-list"><p class="help-text">Loading projects…</p></div>`;
+          $('gl-logout-btn')?.addEventListener('click', async () => {
+            await api('/api/gitlab/logout', {});
+            showGitLab();
+          });
+          $('gl-refresh-btn')?.addEventListener('click', () => loadGitLabProjects());
+          const loadGitLabProjects = async () => {
+            const listEl = $('gl-repos-list');
+            try {
+              const res = await api('/api/gitlab/repos');
+              const repos = res.repos || [];
+              const renderList = (filter) => {
+                const q = (filter || '').toLowerCase();
+                const matched = repos.filter(r => (r.name || '').toLowerCase().includes(q) || (r.path_with_namespace || '').toLowerCase().includes(q));
+                if (!matched.length) {
+                  listEl.innerHTML = '<p class="help-text">No matching GitLab projects found.</p>';
+                  return;
+                }
+                listEl.innerHTML = `<div class="github-repos">${matched.map(r => `<article class="github-repo"><div><strong>${h(r.path_with_namespace || r.name)}</strong><span>${r.visibility === 'public' ? 'Public' : 'Private'} · ${h(r.default_branch || 'main')}</span>${r.description ? `<small style="color:var(--muted);display:block">${h(r.description)}</small>` : ''}</div><button type="button" class="secondary gl-use-repo" data-name="${h(r.path_with_namespace)}" data-url="${h(r.clone_url)}">Clone & Open</button></article>`).join('')}</div>`;
+                listEl.querySelectorAll('.gl-use-repo').forEach(btn => {
+                  btn.addEventListener('click', async () => {
+                    btn.disabled = true;
+                    btn.textContent = 'Cloning project…';
+                    try {
+                      const cloned = await api('/api/gitlab/use', { full_name: btn.dataset.name, url: btn.dataset.url });
+                      openCompare(cloned.repo);
+                    } catch (e) {
+                      btn.disabled = false;
+                      btn.textContent = 'Clone & Open';
+                      fail(e.message);
+                    }
+                  });
+                });
+              };
+              renderList('');
+              $('gl-search-input')?.addEventListener('input', ev => renderList(ev.target.value));
+            } catch (e) {
+              listEl.innerHTML = `<div class="notice" role="alert"><strong>${h(e.message)}</strong></div>`;
+            }
+          };
+          loadGitLabProjects();
+        } else {
+          content.innerHTML = `<div class="integration-card" style="max-width:540px"><p class="integration-help">Connect your GitLab account using a Personal Access Token to browse and open your projects.</p><form id="gl-inline-form" class="integration-form"><label class="field-label" for="gl-in-inst">Instance URL</label><input id="gl-in-inst" class="integration-input" value="https://gitlab.com" placeholder="https://gitlab.com"><label class="field-label" for="gl-in-tok">Personal Access Token</label><input id="gl-in-tok" type="password" class="integration-input" placeholder="glpat-..." required><div class="action-row" style="margin-top:10px"><button type="submit" class="primary" id="gl-in-submit">Connect GitLab</button></div></form><p class="integration-help" style="margin-top:12px">Create a token in GitLab under <strong>User Settings → Access Tokens</strong> with <code>read_api</code> and <code>read_repository</code> scopes.</p></div>`;
+          $('gl-inline-form')?.addEventListener('submit', async ev => {
+            ev.preventDefault();
+            const btn = $('gl-in-submit');
+            if (btn) btn.disabled = true;
+            try {
+              await api('/api/gitlab/token', {
+                instance: $('gl-in-inst')?.value.trim() || 'https://gitlab.com',
+                token: $('gl-in-tok')?.value.trim()
+              });
+              showGitLab();
+            } catch (e) {
+              if (btn) btn.disabled = false;
+              fail(e.message);
+            }
+          });
+        }
+      } catch (err) {
+        content.innerHTML = `<div class="notice" role="alert"><strong>${h(err.message)}</strong></div>`;
+      }
+    }
+    async function showAzure() {
+      page(`${backBar}<section class="github-panel" id="azure-panel" aria-labelledby="azure-title"><div class="page-header"><span class="eyebrow">INTEGRATIONS</span><h1 id="azure-title">${mark('azure','az')} Azure DevOps</h1></div><div id="azure-content"><p class="help-text">Checking Azure DevOps sign-in…</p></div><div class="notice" id="picker-error" hidden></div></section>`);
+      bindBack();
+      const content = $('azure-content');
+      try {
+        const status = await api('/api/azure/status');
+        if (status.signed_in) {
+          content.innerHTML = `<div class="integration-actions" style="margin-bottom:14px;justify-content:space-between;flex-wrap:wrap"><p style="margin:0">Signed in to organization <strong>${h(status.organization || '')}</strong></p><div style="display:flex;gap:8px"><button type="button" class="secondary" id="az-refresh-btn">${ico('refresh')} Refresh</button><button type="button" class="secondary" id="az-logout-btn">Disconnect</button></div></div><div class="search-form open-form" style="margin-bottom:16px"><span class="search-icon" aria-hidden="true">${ico('find')}</span><input id="az-search-input" placeholder="Search your Azure repositories…" autocomplete="off"></div><div id="az-repos-list"><p class="help-text">Loading repositories…</p></div>`;
+          $('az-logout-btn')?.addEventListener('click', async () => {
+            await api('/api/azure/logout', {});
+            showAzure();
+          });
+          $('az-refresh-btn')?.addEventListener('click', () => loadAzureRepos());
+          const loadAzureRepos = async () => {
+            const listEl = $('az-repos-list');
+            try {
+              const res = await api('/api/azure/repos');
+              const repos = res.repos || [];
+              const renderList = (filter) => {
+                const q = (filter || '').toLowerCase();
+                const matched = repos.filter(r => (r.name || '').toLowerCase().includes(q) || (r.project_name || '').toLowerCase().includes(q));
+                if (!matched.length) {
+                  listEl.innerHTML = '<p class="help-text">No matching Azure DevOps repositories found.</p>';
+                  return;
+                }
+                listEl.innerHTML = `<div class="github-repos">${matched.map(r => `<article class="github-repo"><div><strong>${h(r.name)}</strong><span>${h(r.project_name || 'Project')} · ${h(r.default_branch || 'main')}</span></div><button type="button" class="secondary az-use-repo" data-url="${h(r.clone_url)}">Clone & Open</button></article>`).join('')}</div>`;
+                listEl.querySelectorAll('.az-use-repo').forEach(btn => {
+                  btn.addEventListener('click', async () => {
+                    btn.disabled = true;
+                    btn.textContent = 'Cloning repository…';
+                    try {
+                      const cloned = await api('/api/azure/use', { url: btn.dataset.url });
+                      openCompare(cloned.repo);
+                    } catch (e) {
+                      btn.disabled = false;
+                      btn.textContent = 'Clone & Open';
+                      fail(e.message);
+                    }
+                  });
+                });
+              };
+              renderList('');
+              $('az-search-input')?.addEventListener('input', ev => renderList(ev.target.value));
+            } catch (e) {
+              listEl.innerHTML = `<div class="notice" role="alert"><strong>${h(e.message)}</strong></div>`;
+            }
+          };
+          loadAzureRepos();
+        } else {
+          content.innerHTML = `<div class="integration-card" style="max-width:540px"><p class="integration-help">Connect your Azure DevOps account using a Personal Access Token (PAT) to browse and open repositories.</p><form id="az-inline-form" class="integration-form"><label class="field-label" for="az-in-org">Organization Name or URL</label><input id="az-in-org" class="integration-input" placeholder="my-org (or https://dev.azure.com/my-org)" required><label class="field-label" for="az-in-tok">Personal Access Token (PAT)</label><input id="az-in-tok" type="password" class="integration-input" placeholder="PAT token..." required><div class="action-row" style="margin-top:10px"><button type="submit" class="primary" id="az-in-submit">Connect Azure DevOps</button></div></form><p class="integration-help" style="margin-top:12px">Create a PAT in Azure DevOps under <strong>User Settings → Personal access tokens</strong> with <code>Code (Read)</code> scope.</p></div>`;
+          $('az-inline-form')?.addEventListener('submit', async ev => {
+            ev.preventDefault();
+            const btn = $('az-in-submit');
+            if (btn) btn.disabled = true;
+            try {
+              await api('/api/azure/token', {
+                organization: $('az-in-org')?.value.trim(),
+                token: $('az-in-tok')?.value.trim()
+              });
+              showAzure();
+            } catch (e) {
+              if (btn) btn.disabled = false;
+              fail(e.message);
+            }
+          });
+        }
+      } catch (err) {
+        content.innerHTML = `<div class="notice" role="alert"><strong>${h(err.message)}</strong></div>`;
+      }
     }
 
     // ---- Workspaces ----
@@ -338,6 +483,10 @@
     }
 
     function showWorkspaces() {
+      const openBtn = document.querySelector('#navigation [data-action="open-project"]');
+      const wsNavBtn = document.querySelector('#navigation [data-action="workspaces"]');
+      if (openBtn) openBtn.classList.remove('active');
+      if (wsNavBtn) wsNavBtn.classList.add('active');
       const wsList = (info.workspaces || []);
       const cards = wsList.map(wsCard).join('');
       page(`${backBar}<div class="page-header"><span class="eyebrow">WORKSPACES</span><h1>Your Workspaces</h1><p>A workspace tracks a project over time. Every version is remembered so you can compare any two, see the change impact graph, and use all platform features across versions.</p></div>
@@ -398,7 +547,8 @@
       if (panel === 'local' || panel === 'workspace-open' || panel === 'explore') { pathPanel(panel); return; }
       if (panel === 'remote' || panel === 'ssh') { clonePanel(panel === 'ssh' ? 'ssh' : 'https'); return; }
       if (panel === 'github') { showGitHub(); return; }
-      if (panel === 'gitlab' || panel === 'azure') { showUnavailable(panel); return; }
+      if (panel === 'gitlab') { showGitLab(); return; }
+      if (panel === 'azure') { showAzure(); return; }
       if (panel === 'workspace') { showWorkspaces(); return; }
       openHome(true);
       const pills = [['workspace','Workspace',ico('workspace')],['explore','Map only',ico('map')],['remote','Clone',ico('clone')],['ssh','SSH',ico('term')],['github','GitHub',mark('github','gh')],['gitlab','GitLab',mark('gitlab','gl')],['azure','Azure DevOps',mark('azure','az')]];
@@ -536,6 +686,8 @@
           <button type="button" class="pill" data-ws-tab="clone">${ico('clone')}<span>Clone URL</span></button>
           <button type="button" class="pill" data-ws-tab="ssh">${ico('term')}<span>SSH</span></button>
           <button type="button" class="pill" data-ws-tab="github">${mark('github','gh')}<span>GitHub</span></button>
+          <button type="button" class="pill" data-ws-tab="gitlab">${mark('gitlab','gl')}<span>GitLab</span></button>
+          <button type="button" class="pill" data-ws-tab="azure">${mark('azure','az')}<span>Azure DevOps</span></button>
           <button type="button" class="pill" data-ws-tab="recent">${ico('folder')}<span>Recent</span></button>
         </nav>
         <div class="ws-tab-body" id="ws-tab-body"></div>
@@ -702,6 +854,18 @@
           <div class="action-row"><button type="button" class="secondary" id="ws-gh-open-btn">${mark('github','gh')} Open GitHub Options</button></div>
         </div>`;
         $('ws-gh-open-btn')?.addEventListener('click', () => { showGitHub(); });
+      } else if (tab === 'gitlab') {
+        container.innerHTML = `<div class="ws-tab-panel" id="ws-gl-tab-panel">
+          <p class="help-text">Connect to GitLab to select a project repository and add its latest version to this workspace.</p>
+          <div class="action-row"><button type="button" class="secondary" id="ws-gl-open-btn">${mark('gitlab','gl')} Open GitLab Options</button></div>
+        </div>`;
+        $('ws-gl-open-btn')?.addEventListener('click', () => { showGitLab(); });
+      } else if (tab === 'azure') {
+        container.innerHTML = `<div class="ws-tab-panel" id="ws-az-tab-panel">
+          <p class="help-text">Connect to Azure DevOps to select a repository and add its latest version to this workspace.</p>
+          <div class="action-row"><button type="button" class="secondary" id="ws-az-open-btn">${mark('azure','az')} Open Azure DevOps Options</button></div>
+        </div>`;
+        $('ws-az-open-btn')?.addEventListener('click', () => { showAzure(); });
       } else if (tab === 'recent') {
         const recentList = (info.recent || []);
         container.innerHTML = `<div class="ws-tab-panel">

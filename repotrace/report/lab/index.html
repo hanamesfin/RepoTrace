@@ -37,18 +37,49 @@
     <symbol id="i-gitlab" viewBox="0 0 24 24"><path d="M23.6 13.3 22.3 9.2 19.6 1.1a.5.5 0 0 0-.9 0L16 9.2H8L5.3 1.1a.5.5 0 0 0-.9 0L1.7 9.2.4 13.3a1 1 0 0 0 .4 1.1L12 22.7l11.2-8.3a1 1 0 0 0 .4-1.1z"/></symbol>
     <symbol id="i-azure" viewBox="0 0 24 24"><path d="M13.2 3.2 3.4 18.6h4.1l1.6-3.6h6.2l1.5 3.6h4.2L14.8 3.2h-1.6zm.7 8.7H9.8l2.05-4.7 2.05 4.7zM2 20.2h7.2l1.2-2.6H4.6L2 20.2z"/></symbol>
     <symbol id="i-workspace" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-sidebar-collapse" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></symbol>
+    <symbol id="i-sidebar-expand" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m13 15 3-3-3-3"/></symbol>
   </svg>
   <a class="skip" href="#content">Skip to workspace</a>
   <div class="shell">
-    <aside class="rail" aria-label="Project navigation">
-      <button class="brand" data-action="open-project" aria-label="Open project or file" title="Open project or file"><img src="/lab/icon.svg" alt="RepoTrace" width="30" height="30" class="brand-logo"><span class="brand-text">RepoTrace<span>LAB</span></span></button>
+    <aside class="rail" id="app-rail" aria-label="Project navigation">
+      <div class="rail-header">
+        <button class="brand" data-action="open-project" aria-label="RepoTrace Home / Open project" title="RepoTrace Home / Open project"><img src="/lab/icon.svg" alt="RepoTrace" width="30" height="30" class="brand-logo"><span class="brand-text">RepoTrace<span>LAB</span></span></button>
+        <button class="icon-button rail-minimizer" id="rail-minimizer" data-action="toggle-sidebar" aria-label="Collapse sidebar (⌘B)" title="Collapse sidebar (⌘B)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sidebar-collapse"/></svg></button>
+      </div>
       <div class="project" id="project-card"><span class="project-icon" id="project-icon">·</span><div><strong data-project>…</strong><span id="project-sub">Python project</span></div></div>
       <div class="rail-label" id="rail-label">WORKSPACE</div>
       <nav id="navigation"></nav>
-      <div class="rail-bottom"><span class="live-dot"></span> <span id="rail-title">RepoTrace</span><p id="rail-note">Nothing is uploaded.<br>No repository is changed.</p><button class="text-button" data-action="about">What works here? <span aria-hidden="true">↗</span></button></div>
+      <div class="rail-bottom">
+        <button class="rail-action-item" data-action="settings" id="rail-settings-btn" title="Settings (⌘,)">
+          <span class="nav-icon"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg></span>
+          <span class="rail-action-text">Settings</span>
+          <kbd class="shortcut-badge">⌘,</kbd>
+        </button>
+        <div class="rail-status-info">
+          <span class="live-dot"></span> <span id="rail-title">RepoTrace</span>
+          <p id="rail-note">Local static analysis.<br>Nothing is uploaded.</p>
+        </div>
+        <button class="text-button" data-action="about">What works here? <span aria-hidden="true">↗</span></button>
+      </div>
     </aside>
     <div class="workspace">
-      <header class="topbar"><div class="nav-tools"><button id="back" class="icon-button" data-action="back" aria-label="Back to previous view" title="Back (Alt + Left)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-back"/></svg></button><span id="location">Start</span></div><div class="top-right"><span class="snapshot" id="snapshot"></span><button class="search-shortcut" data-action="find" aria-label="Find code (Command or Control K)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span>Find code</span><kbd>⌘ K</kbd></button><button class="icon-button" data-action="settings" id="top-settings" aria-label="Settings" title="Settings"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg></button></div></header>
+      <header class="topbar">
+        <div class="nav-tools">
+          <button id="sidebar-toggle" class="icon-button" data-action="toggle-sidebar" aria-label="Toggle sidebar (⌘B)" title="Toggle sidebar (⌘B)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sidebar-collapse"/></svg></button>
+          <button id="back" class="icon-button" data-action="back" aria-label="Back to previous view" title="Back (Alt + Left)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-back"/></svg></button>
+          <div class="location-trail" id="location-trail"><span id="location">Start</span></div>
+        </div>
+        <div class="top-right">
+          <span class="snapshot" id="snapshot"></span>
+          <button class="search-shortcut" data-action="find" aria-label="Find code (Command or Control K)" title="Find functions and files (⌘K)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-search"/></svg><span>Find code</span><kbd>⌘ K</kbd></button>
+          <button class="icon-button" data-action="settings" id="top-settings" aria-label="Settings (⌘,)" title="Settings (⌘,)"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg></button>
+        </div>
+      </header>
+      <main id="content" tabindex="-1"></main>
+      <footer class="statusbar"><span><i></i> <span data-project>…</span> <span class="dim">/</span> <span id="status-context">Open a project</span></span><button class="text-button" data-action="about">Static analysis · not runtime proof</button></footer>
+    </div>
+  </div>
       <main id="content" tabindex="-1"></main>
       <footer class="statusbar"><span><i></i> <span data-project>…</span> <span class="dim">/</span> <span id="status-context">Open a project</span></span><button class="text-button" data-action="about">Static analysis · not runtime proof</button></footer>
     </div>

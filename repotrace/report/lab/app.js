@@ -310,7 +310,7 @@ window.RTLab = (D) => {
   function gitTable(rows){return `<dl class="git-grid">${rows.map(([key,value])=>`<dt>${h(key)}</dt><dd>${h(value)}</dd>`).join('')}</dl>`;}
   function integrationsSection(){
     const ready=!!(D.reviews||[])[0];
-    return `<section id="integrations" aria-labelledby="integrations-title"><div class="section-heading"><h2 id="integrations-title">Integrations</h2></div><div id="github-integration"><p class="help-text">Reading GitHub sign-in…</p></div><p class="help-text">The folder below is already on this computer. Closing the page stops RepoTrace from reading it. Signing out of GitHub removes the saved token and leaves that folder in place.</p>${gitTable(analysisRows())}<div id="git-live"><p class="help-text">Local Git status has not been read yet.</p></div><div class="action-row"><button type="button" class="secondary" data-action="git-refresh">Refresh local Git</button>${reportMenu(ready)}<button type="button" class="secondary" data-action="export-json" ${ready?'':'disabled'}>Export review JSON</button><button type="button" class="secondary" data-action="export-csv" ${ready?'':'disabled'}>Export review CSV</button></div><p class="help-text">The file is built in this browser from the review already on screen. Nothing is uploaded.</p><p class="help-text">GitLab, Bitbucket, Slack, Discord, Notion, Jira, Trello, Linear, Google, Microsoft 365, databases and webhooks are not connected. Analysis stays on this computer.</p></section>`;
+    return `<section id="integrations" aria-labelledby="integrations-title"><div class="section-heading"><h2 id="integrations-title">Git & Cloud Integrations</h2></div><p class="help-text">Connect to GitHub, GitLab, or Azure DevOps to clone, sync repositories, and create multi-version review workspaces.</p><div id="git-integrations-panel" class="integration-grid"><article class="integration-card" id="int-github"><div class="integration-card-head"><span class="integration-title">${mark('github','gh')} GitHub</span><span class="integration-badge disconnected" id="gh-badge">Checking…</span></div><div class="integration-body" id="gh-body"><p class="integration-help">Reading GitHub sign-in…</p></div></article><article class="integration-card" id="int-gitlab"><div class="integration-card-head"><span class="integration-title">${mark('gitlab','gl')} GitLab</span><span class="integration-badge disconnected" id="gl-badge">Checking…</span></div><div class="integration-body" id="gl-body"><p class="integration-help">Reading GitLab sign-in…</p></div></article><article class="integration-card" id="int-azure"><div class="integration-card-head"><span class="integration-title">${mark('azure','az')} Azure DevOps</span><span class="integration-badge disconnected" id="az-badge">Checking…</span></div><div class="integration-body" id="az-body"><p class="integration-help">Reading Azure DevOps sign-in…</p></div></article></div><div class="section-heading" style="margin-top:24px"><h3 style="font-size:16px;margin:0">Local Repository Status</h3></div>${gitTable(analysisRows())}<div id="git-live"><p class="help-text">Local Git status has not been read yet.</p></div><div class="action-row"><button type="button" class="secondary" data-action="git-refresh">Refresh local Git</button>${reportMenu(ready)}<button type="button" class="secondary" data-action="export-json" ${ready?'':'disabled'}>Export review JSON</button><button type="button" class="secondary" data-action="export-csv" ${ready?'':'disabled'}>Export review CSV</button></div></section>`;
   }
   let githubSettingsTimer=0;
   function githubIntegrationHtml(data){
@@ -1107,7 +1107,7 @@ window.RTLab = (D) => {
   }
   function render(){
     const s=state();
-    $('navigation').innerHTML=[['start','home','Start','home'],['map-home','map','Explore the project','explore'],['reviews','review','Check a change','reviews'],['files','folder','File list','browse'],['settings','sliders','Settings','settings']].map(([action,icon,text,page])=>`<button class="nav-item ${s.page===page||action==='reviews'&&s.page==='review'?'active':''}" data-action="${action}" title="${text}" ${s.page===page?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${ico(icon)}</span><span class="nav-text">${text}</span>${action==='reviews'&&D.reviews.length?`<span class="nav-count">${D.reviews.length}</span>`:''}</button>`).join('');
+    $('navigation').innerHTML=[['start','home','Start','home'],['map-home','map','Explore the project','explore'],['reviews','review','Check a change','reviews'],['files','folder','File list','browse']].map(([action,icon,text,page])=>`<button class="nav-item ${s.page===page||action==='reviews'&&s.page==='review'?'active':''}" data-action="${action}" title="${text}" ${s.page===page?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${ico(icon)}</span><span class="nav-text">${text}</span>${action==='reviews'&&D.reviews.length?`<span class="nav-count">${D.reviews.length}</span>`:''}</button>`).join('');
     $('back').disabled=!nav.past.length;
     $('location').textContent=({home:'Start',search:'Find code',explore:'Explore the project',browse:'Browse files',function:'Read the code',reviews:'Check a change',review:'Check a change',settings:'Settings'})[s.page];
     $('snapshot').textContent=s.review===null?VERSION:review().base+' → '+review().head;
@@ -1136,6 +1136,11 @@ window.RTLab = (D) => {
     if(topSettings){
       topSettings.classList.toggle('active',s.page==='settings');
       if(s.page==='settings')topSettings.setAttribute('aria-current','page'); else topSettings.removeAttribute('aria-current');
+    }
+    const railSettings=$('rail-settings-btn');
+    if(railSettings){
+      railSettings.classList.toggle('active',s.page==='settings');
+      if(s.page==='settings')railSettings.setAttribute('aria-current','page'); else railSettings.removeAttribute('aria-current');
     }
   }
   let toastTimer;

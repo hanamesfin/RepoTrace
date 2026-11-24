@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit, urlparse
 
-from repotrace.app import examples, github_auth, workspaces
+from repotrace.app import examples, github_auth, remote_auth, workspaces
 from repotrace.changes.change_impact import analyze_change_impact
 from repotrace.graph.graph_explore import Explorer
 from repotrace.graph.graph_index import GraphIndex
@@ -308,6 +308,28 @@ def clone_may_use_github_token(plan):
     return plan.get('transport') == 'https' and plan.get('host') in _GITHUB_HOSTS
 
 
+def clone_may_use_remote_token(plan, state):
+    """Check if the clone plan can use a saved token for GitHub, GitLab, or Azure DevOps."""
+    if plan.get('transport') != 'https':
+        return None
+    host = plan.get('host', '').lower()
+    if host in _GITHUB_HOSTS:
+        saved = state.github._load()
+        if saved and saved.get('token'):
+            state.github.remember_secret(saved['token'])
+            return saved['token']
+    if 'gitlab' in host:
+        token = state.gitlab.get_token()
+        if token:
+            return token
+    if 'dev.azure.com' in host or 'visualstudio.com' in host:
+        token = state.azure.get_token()
+        if token:
+            import base64
+            return f"Basic {base64.b64encode(f':{token}'.encode()).decode('ascii')}"
+    return None
+
+
 def perform_clone(home, url, kind, confirm, token=None, git_run=None):
     """Clone, or fetch --prune when the mirror folder is already a Git checkout.
 
@@ -319,10 +341,8 @@ def perform_clone(home, url, kind, confirm, token=None, git_run=None):
         raise ValueError('Confirm the folder shown on screen before cloning.')
     if plan['blocked']:
         raise ValueError(plan['dest'] + ' already exists and is not a Git clone. RepoTrace will not replace it.')
-    if not clone_may_use_github_token(plan):
-        token = None
     if token and any(token in str(part) for part in (plan['url'], plan['dest'])):
-        raise ValueError('Refusing to put the GitHub token in the clone.')
+        raise ValueError('Refusing to put the token in the clone.')
     root = Path(home) / '.repotrace'
     root.mkdir(parents=True, exist_ok=True)
     try:
@@ -500,7 +520,7 @@ class Job:
 # ------------------------------------------------------------------ server
 
 class AppState:
-    def __init__(self, initial_repo=None, recent_file=None, page_hook=None, browse=browse_for_folder, github=None):
+    def __init__(self, initial_repo=None, recent_file=None, page_hook=None, browse=browse_for_folder, github=None, gitlab=None, azure=None):
         self.token = secrets.token_urlsafe(24)
         self.port = None
         self.jobs, self.lock = {}, threading.Lock()
@@ -512,6 +532,8 @@ class AppState:
         self.examples_dir = None
         self.prepared = {}
         self.github = github if github is not None else github_auth.GitHubSession()
+        self.gitlab = gitlab if gitlab is not None else remote_auth.GitLabSession()
+        self.azure = azure if azure is not None else remote_auth.AzureSession()
 
     def prepare_example(self, example_id):
         if example_id not in self.prepared:
@@ -689,6 +711,36 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                     self.json(200, github_auth.scrub_public(state.github.list_repos()))
                 except github_auth.GitHubError as exc:
                     self.json(400, {'error': github_auth.scrub_text(str(exc))})
+            elif url.path == '/api/gitlab/status':
+                if not self.guard():
+                    return
+                self.json(200, state.gitlab.status())
+            elif url.path == '/api/gitlab/repos':
+                if not self.guard():
+                    return
+                try:
+                    self.json(200, state.gitlab.list_repos())
+                except Exception as exc:
+                    self.json(400, {'error': str(exc)})
+            elif url.path == '/api/azure/status':
+                if not self.guard():
+                    return
+                self.json(200, state.azure.status())
+            elif url.path == '/api/azure/repos':
+                if not self.guard():
+                    return
+                try:
+                    self.json(200, state.azure.list_repos())
+                except Exception as exc:
+                    self.json(400, {'error': str(exc)})
+            elif url.path == '/api/integrations/status':
+                if not self.guard():
+                    return
+                self.json(200, {
+                    'github': github_auth.scrub_public(state.github.status()),
+                    'gitlab': state.gitlab.status(),
+                    'azure': state.azure.status(),
+                })
             elif url.path == '/api/export':
                 if not self.guard(query_token=(query.get('token') or [''])[0]):
                     return
@@ -964,6 +1016,31 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                     self.json(200, github_auth.scrub_public(state.github.logout()))
                 elif path == '/api/github/use':
                     self.json(200, github_auth.scrub_public(state.github.use_repo(data.get('full_name'))))
+                elif path == '/api/gitlab/token':
+                    self.json(200, state.gitlab.accept_token(data.get('token'), data.get('instance') or 'https://gitlab.com'))
+                elif path == '/api/gitlab/logout':
+                    self.json(200, state.gitlab.logout())
+                elif path == '/api/gitlab/use':
+                    full_name = data.get('full_name')
+                    token = state.gitlab.get_token()
+                    cred = state.gitlab._load()
+                    instance = cred.get('instance', 'https://gitlab.com').rstrip('/') if cred else 'https://gitlab.com'
+                    clone_url = data.get('url') or f"{instance}/{full_name}.git"
+                    plan = plan_clone(state.github.home, clone_url, 'https')
+                    cloned = perform_clone(state.github.home, clone_url, 'https', plan['dest'], token=token)
+                    self.json(200, cloned)
+                elif path == '/api/azure/token':
+                    self.json(200, state.azure.accept_token(data.get('token'), data.get('organization')))
+                elif path == '/api/azure/logout':
+                    self.json(200, state.azure.logout())
+                elif path == '/api/azure/use':
+                    clone_url = data.get('url')
+                    token = state.azure.get_token()
+                    import base64
+                    basic_token = f"Basic {base64.b64encode(f':{token}'.encode()).decode('ascii')}" if token else None
+                    plan = plan_clone(state.github.home, clone_url, 'https')
+                    cloned = perform_clone(state.github.home, clone_url, 'https', plan['dest'], token=basic_token)
+                    self.json(200, cloned)
                 elif path == '/api/clone':
                     plan = plan_clone(state.github.home, data.get('url'), data.get('kind'))
                     public = {
@@ -973,12 +1050,7 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                     if data.get('confirm') != plan['dest']:
                         self.json(200, public)
                         return
-                    token = None
-                    if clone_may_use_github_token(plan):
-                        saved = state.github._load()
-                        if saved and saved.get('token'):
-                            token = saved['token']
-                            state.github.remember_secret(token)
+                    token = clone_may_use_remote_token(plan, state)
                     cloned = perform_clone(state.github.home, data.get('url'), data.get('kind'), data.get('confirm'), token=token)
                     self.json(200, state.github.publish(cloned))
                 else:
