@@ -486,7 +486,7 @@
     show('menu');
   }
 
-  function stepWorkspace(boot, ws) {
+  function stepWorkspace(boot, ws, flashMessage, flashAddedCount) {
     openHome(false);
     const versions = ws.versions || [];
     const vLabel = v => `${v.short || v.commit?.slice(0, 8)} · ${v.subject || '(no message)'}${v.author ? ' · ' + v.author : ''}`;
@@ -503,7 +503,18 @@
     const baseOpts = versions.map((v, i) => `<option value="${i}"${i === versions.length - 2 ? ' selected' : ''}>${h(vLabel(v))}</option>`).join('');
     const headOpts = versions.map((v, i) => `<option value="${i}"${i === versions.length - 1 ? ' selected' : ''}>${h(vLabel(v))}</option>`).join('');
 
+    if (flashMessage) {
+      const t = $('toast');
+      if (t) {
+        t.textContent = flashMessage;
+        t.classList.add('show');
+        clearTimeout(root._toastTimer);
+        root._toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+      }
+    }
+
     page(`<div class="page-header"><span class="eyebrow">WORKSPACE</span><h1>${ico('workspace')} ${h(ws.name)}</h1><p>${ws.description ? h(ws.description) + ' · ' : ''}${h(ws.repo_name || ws.repo)} · ${versions.length} version${versions.length !== 1 ? 's' : ''} tracked</p></div>
+      ${flashMessage ? `<div class="notice ${flashAddedCount > 0 ? 'success' : 'neutral'}" role="status"><strong>${flashAddedCount > 0 ? ico('check') : ico('info')} ${h(flashMessage)}</strong></div>` : ''}
       ${hasEnough ? `<section class="card" aria-labelledby="ws-cmp-title"><div class="card-head"><h2 id="ws-cmp-title">Compare Versions</h2></div>
         <p class="help-text">Pick any two versions from this workspace and see the full change impact graph, recommendations, and more.</p>
         <form id="ws-compare-form" class="go-form">
@@ -520,6 +531,7 @@
         <p class="help-text">Add a new version to this workspace using any option from the open page. It will be recorded alongside previous versions for instant comparison and change impact analysis.</p>
         <nav class="ws-tabs" aria-label="Upload options">
           <button type="button" class="pill is-on" data-ws-tab="folder">${ico('folder')}<span>Folder</span></button>
+          <button type="button" class="pill" data-ws-tab="file">${ico('upload')}<span>ZIP / File</span></button>
           <button type="button" class="pill" data-ws-tab="fetch">${ico('download')}<span>Git Fetch</span></button>
           <button type="button" class="pill" data-ws-tab="clone">${ico('clone')}<span>Clone URL</span></button>
           <button type="button" class="pill" data-ws-tab="ssh">${ico('term')}<span>SSH</span></button>
@@ -551,7 +563,11 @@
             <span class="search-icon" aria-hidden="true">${ico('folder')}</span>
             <input id="ws-tab-folder" placeholder="/path/to/project" value="${h(ws.repo || '')}" required autocomplete="off">
             <button type="button" class="secondary" id="ws-tab-browse">Browse…</button>
-            <button class="primary" type="submit">Upload Version ${ico('arrow')}</button>
+            <button class="primary" type="submit" id="ws-tab-folder-btn">Upload Version ${ico('arrow')}</button>
+          </div>
+          <div class="ws-tab-options" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <label class="check"><input type="checkbox" id="ws-snap-check" checked><span>Snapshot uncommitted changes if present</span></label>
+            <input id="ws-snap-note" class="text-input" style="flex:1;min-width:200px;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:6px 10px;color:var(--text)" placeholder="Optional snapshot note (e.g. 'v1.2 with new header')">
           </div>
         </form>`;
         const browse = $('ws-tab-browse');
@@ -563,11 +579,70 @@
           ev.preventDefault();
           const folder = $('ws-tab-folder').value.trim();
           if (!folder) { fail('Choose a folder.'); return; }
+          const btn = $('ws-tab-folder-btn');
+          if (btn) btn.disabled = true;
           try {
-            const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: folder });
-            stepWorkspace(boot, updated);
-          } catch (e) { fail(e.message); }
+            const updated = await api('/api/workspace/upload-version', {
+              id: ws.id,
+              mode: 'folder',
+              repo: folder,
+              snapshot: $('ws-snap-check')?.checked ?? true,
+              note: $('ws-snap-note')?.value.trim() || ''
+            });
+            stepWorkspace(boot, updated, updated.message, updated.added_count);
+          } catch (e) {
+            if (btn) btn.disabled = false;
+            fail(e.message);
+          }
         });
+      } else if (tab === 'file') {
+        container.innerHTML = `<div class="ws-tab-panel">
+          <p class="help-text">Upload a .zip file of your project's new version. It will be unzipped into the workspace mirror and committed as a version.</p>
+          <div class="ws-file-drop" id="ws-file-drop" style="border:2px dashed var(--line2);border-radius:10px;padding:28px 18px;text-align:center;cursor:pointer;background:var(--panel2);margin:12px 0">
+            <div style="font-size:28px;color:var(--mint);margin-bottom:8px">${ico('upload')}</div>
+            <p style="margin:0;font-size:13px"><strong>Click to choose a .zip file</strong> or drag and drop it here</p>
+            <input type="file" id="ws-zip-input" accept=".zip,application/zip" style="display:none">
+          </div>
+          <div class="ws-tab-options" style="margin-top:8px">
+            <input id="ws-file-note" class="text-input" style="width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:6px 10px;color:var(--text)" placeholder="Optional version label (e.g. 'Release v2.0')">
+          </div>
+        </div>`;
+        const dropZone = $('ws-file-drop');
+        const fileInput = $('ws-zip-input');
+        if (dropZone && fileInput) {
+          dropZone.addEventListener('click', () => fileInput.click());
+          dropZone.addEventListener('dragover', ev => { ev.preventDefault(); dropZone.style.borderColor = 'var(--mint)'; });
+          dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--line2)'; });
+          dropZone.addEventListener('drop', ev => {
+            ev.preventDefault();
+            dropZone.style.borderColor = 'var(--line2)';
+            if (ev.dataTransfer.files?.[0]) handleZipUpload(ev.dataTransfer.files[0]);
+          });
+          fileInput.addEventListener('change', () => {
+            if (fileInput.files?.[0]) handleZipUpload(fileInput.files[0]);
+          });
+        }
+        function handleZipUpload(file) {
+          if (!file.name.toLowerCase().endsWith('.zip')) {
+            fail('Please upload a .zip archive of the project folder.');
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              if (dropZone) dropZone.innerHTML = `<p style="margin:0;font-size:13px">Uploading and recording snapshot…</p>`;
+              const updated = await api('/api/workspace/upload-version', {
+                id: ws.id,
+                mode: 'zip',
+                filename: file.name,
+                zip_base64: reader.result,
+                note: $('ws-file-note')?.value.trim() || ''
+              });
+              stepWorkspace(boot, updated, updated.message, updated.added_count);
+            } catch (e) { fail(e.message); }
+          };
+          reader.readAsDataURL(file);
+        }
       } else if (tab === 'fetch') {
         container.innerHTML = `<div class="ws-tab-panel">
           <p class="help-text">Check the remote repository for newly pushed commits and record them into this workspace.</p>
@@ -577,7 +652,7 @@
           $('ws-tab-fetch-btn').disabled = true;
           try {
             const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'fetch' });
-            stepWorkspace(boot, updated);
+            stepWorkspace(boot, updated, updated.message, updated.added_count);
           } catch (e) {
             if ($('ws-tab-fetch-btn')) $('ws-tab-fetch-btn').disabled = false;
             fail(e.message);
@@ -599,7 +674,7 @@
             if (plan.blocked) { fail(plan.dest + ' already exists and is not a Git clone.'); return; }
             const done = await api('/api/clone', { url, kind: 'https', confirm: plan.dest });
             const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: done.repo });
-            stepWorkspace(boot, updated);
+            stepWorkspace(boot, updated, updated.message, updated.added_count);
           } catch (e) { fail(e.message); }
         });
       } else if (tab === 'ssh') {
@@ -618,7 +693,7 @@
             if (plan.blocked) { fail(plan.dest + ' already exists and is not a Git clone.'); return; }
             const done = await api('/api/clone', { url, kind: 'ssh', confirm: plan.dest });
             const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: done.repo });
-            stepWorkspace(boot, updated);
+            stepWorkspace(boot, updated, updated.message, updated.added_count);
           } catch (e) { fail(e.message); }
         });
       } else if (tab === 'github') {
@@ -637,7 +712,7 @@
             btn.disabled = true;
             try {
               const updated = await api('/api/workspace/upload-version', { id: ws.id, mode: 'folder', repo: btn.dataset.recRepo });
-              stepWorkspace(boot, updated);
+              stepWorkspace(boot, updated, updated.message, updated.added_count);
             } catch (e) { btn.disabled = false; fail(e.message); }
           });
         });
@@ -672,7 +747,7 @@
     $('ws-refresh')?.addEventListener('click', async () => {
       try {
         const refreshed = await api('/api/workspace/refresh', { id: ws.id });
-        stepWorkspace(boot, refreshed);
+        stepWorkspace(boot, refreshed, refreshed.message, refreshed.added_count);
       } catch (e) { fail(e.message); }
     });
 

@@ -85,6 +85,47 @@ class TestWorkspaces(unittest.TestCase):
         with self.assertRaises(ValueError):
             workspaces.compare_versions(ws['id'], 0, 0, root=ws_root)
 
+    def test_snapshot_working_tree(self):
+        # 1. Clean repo returns None
+        self.assertIsNone(workspaces.snapshot_working_tree(self.repo))
+
+        # 2. Modify file in repo
+        (self.repo / 'main.py').write_text('def hello(): return 42\n')
+        head_before = run_git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        snap = workspaces.snapshot_working_tree(self.repo, subject='Test snapshot')
+        self.assertIsNotNone(snap)
+        self.assertEqual(snap['subject'], 'Test snapshot')
+        self.assertTrue(snap.get('is_snapshot'))
+
+        # Verify HEAD was NOT moved
+        head_after = run_git(self.repo, 'rev-parse', 'HEAD').decode().strip()
+        self.assertEqual(head_before, head_after)
+
+        # Verify git diff between HEAD and snapshot commit
+        diff = run_git(self.repo, 'diff', head_before, snap['commit']).decode()
+        self.assertIn('+def hello(): return 42', diff)
+
+    def test_snapshot_non_git_directory_and_zip(self):
+        import io
+        import zipfile
+        ws_root = self.root / 'ws'
+        plain_dir = self.root / 'plain-folder'
+        plain_dir.mkdir()
+        (plain_dir / 'script.py').write_text('print("hello from folder")\n')
+        ws = workspaces.create_workspace('Plain', str(plain_dir), root=ws_root)
+        captured = workspaces.auto_capture_versions(ws['id'], str(plain_dir), root=ws_root)
+        self.assertEqual(len(captured['versions']), 1)
+
+        # Test zip upload
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as zf:
+            zf.writestr('app.py', 'print("hello from zip")\n')
+        ws2, is_new = workspaces.snapshot_zip_to_mirror(
+            ws['id'], buf.getvalue(), filename='release.zip', subject='Zip v1', root=ws_root
+        )
+        self.assertTrue(is_new)
+        self.assertGreaterEqual(len(ws2['versions']), 2)
+
 
 class TestWorkspaceServerAPI(unittest.TestCase):
     def setUp(self):
@@ -212,6 +253,58 @@ class TestWorkspaceServerAPI(unittest.TestCase):
         status, del_res = self.call('POST', '/api/workspace/delete', {'id': ws['id']})
         self.assertEqual(status, 200)
         self.assertTrue(del_res['ok'])
+
+    def test_upload_dirty_worktree_and_zip_via_api(self):
+        import base64
+        import io
+        import zipfile
+
+        # Create workspace with clean repo
+        status, ws = self.call('POST', '/api/workspace/create', {
+            'name': 'Dirty Repo WS',
+            'repo': str(self.repo),
+        })
+        self.assertEqual(status, 200)
+        initial_ver_count = len(ws['versions'])
+
+        # 1. Upload without any changes -> added_count: 0
+        status, res1 = self.call('POST', '/api/workspace/upload-version', {
+            'id': ws['id'],
+            'mode': 'folder',
+            'repo': str(self.repo),
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(res1['added_count'], 0)
+        self.assertIn('up to date', res1['message'])
+
+        # 2. Make uncommitted changes in repo
+        (self.repo / 'app.py').write_text('def add(a, b): return a + b + 99\n')
+        status, res2 = self.call('POST', '/api/workspace/upload-version', {
+            'id': ws['id'],
+            'mode': 'folder',
+            'repo': str(self.repo),
+            'note': 'Working snapshot via API',
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(res2['added_count'], 1)
+        self.assertIn('Working snapshot via API', res2['versions'][-1]['subject'])
+        self.assertEqual(len(res2['versions']), initial_ver_count + 1)
+
+        # 3. Upload zip via API
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as zf:
+            zf.writestr('module.py', 'X = 123\n')
+        zip_b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+        status, res3 = self.call('POST', '/api/workspace/upload-version', {
+            'id': ws['id'],
+            'mode': 'zip',
+            'filename': 'bundle.zip',
+            'zip_base64': zip_b64,
+            'note': 'Zip release 1.0',
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(res3['added_count'], 1)
+        self.assertIn('Zip release 1.0', res3['versions'][-1]['subject'])
 
 
 

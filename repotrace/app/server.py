@@ -827,11 +827,18 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                     if not ws:
                         self.json(404, {'error': 'Workspace not found.'})
                         return
+                    prev_len = len(ws.get('versions', []))
                     if data.get('fetch'):
                         ws = workspaces.fetch_workspace_updates(ws_id)
                     elif Path(ws['repo']).is_dir():
-                        ws = workspaces.auto_capture_versions(ws_id, ws['repo'])
-                    self.json(200, ws)
+                        ws = workspaces.auto_capture_versions(ws_id, ws['repo'], capture_snapshot=True)
+                    new_len = len(ws.get('versions', []))
+                    added_count = new_len - prev_len
+                    msg = f"Added {added_count} new version(s)." if added_count > 0 else "Workspace is up to date."
+                    res = dict(ws)
+                    res['added_count'] = added_count
+                    res['message'] = msg
+                    self.json(200, res)
                 elif path == '/api/workspace/upload-version':
                     ws_id = data.get('id', '')
                     ws = workspaces.get_workspace(ws_id)
@@ -839,20 +846,54 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                         self.json(404, {'error': 'Workspace not found.'})
                         return
                     mode = data.get('mode', 'folder')
+                    note = str(data.get('note') or '').strip()
+                    author = str(data.get('author') or '').strip()
+                    prev_len = len(ws.get('versions', []))
                     if mode == 'folder':
                         repo = data.get('repo') or ws['repo']
-                        ws = workspaces.update_workspace_repo(ws_id, repo)
+                        snapshot = bool(data.get('snapshot', True))
+                        ws = workspaces.update_workspace_repo(
+                            ws_id, repo, capture_snapshot=snapshot, snapshot_note=note, author=author
+                        )
                     elif mode == 'fetch':
                         ws = workspaces.fetch_workspace_updates(ws_id)
+                    elif mode == 'snapshot':
+                        repo = data.get('repo') or ws['repo']
+                        snap = workspaces.snapshot_working_tree(repo, subject=note, author=author)
+                        if snap:
+                            ws = workspaces.add_version(
+                                ws_id=ws_id,
+                                commit=snap['commit'],
+                                subject=snap['subject'],
+                                author=snap['author'],
+                            )
+                    elif mode == 'zip':
+                        import base64
+                        zip_b64 = data.get('zip_base64', '')
+                        filename = str(data.get('filename') or 'archive.zip')
+                        zip_bytes = base64.b64decode(zip_b64.split(',')[-1])
+                        ws, is_new = workspaces.snapshot_zip_to_mirror(
+                            ws_id, zip_bytes, filename=filename, subject=note, author=author
+                        )
                     elif mode == 'commit':
                         ws = workspaces.add_version(
                             ws_id=ws_id,
                             commit=data.get('commit', ''),
-                            subject=data.get('subject', ''),
-                            author=data.get('author', ''),
+                            subject=note or data.get('subject', ''),
+                            author=author or data.get('author', ''),
                             branch=data.get('branch', ''),
                         )
-                    self.json(200, ws)
+                    new_len = len(ws.get('versions', []))
+                    added_count = new_len - prev_len
+                    if added_count > 0:
+                        latest = ws['versions'][-1]
+                        msg = f"Added {added_count} new version: {latest.get('subject') or latest.get('short')}"
+                    else:
+                        msg = "No new commits or uncommitted changes found. The workspace is up to date."
+                    res = dict(ws)
+                    res['added_count'] = added_count
+                    res['message'] = msg
+                    self.json(200, res)
                 elif path == '/api/workspace/add-repo':
                     repo = str(data.get('repo', '')).strip()
                     if not repo:
@@ -863,13 +904,13 @@ def make_server(host='127.0.0.1', port=0, **kwargs):
                         if not ws:
                             self.json(404, {'error': 'Workspace not found.'})
                             return
-                        ws = workspaces.update_workspace_repo(ws_id, repo)
+                        ws = workspaces.update_workspace_repo(ws_id, repo, capture_snapshot=True)
                     else:
                         name = str(data.get('name') or Path(repo).name).strip()
                         ws = workspaces.create_workspace(name=name, repo=repo)
                         if Path(ws['repo']).is_dir():
                             try:
-                                ws = workspaces.auto_capture_versions(ws['id'], ws['repo'])
+                                ws = workspaces.auto_capture_versions(ws['id'], ws['repo'], capture_snapshot=True)
                             except Exception:
                                 pass
                     self.json(200, ws)

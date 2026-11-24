@@ -181,6 +181,9 @@ button:hover:not(:disabled){filter:none}
 .notice.neutral{background:var(--surface);border-color:var(--border)}
 .notice.neutral strong{color:var(--text)}
 .notice.neutral p{color:var(--muted)}
+.notice.success{background:color-mix(in srgb,var(--mint, #10b981) 16%,var(--surface));border-color:color-mix(in srgb,var(--mint, #10b981) 40%,transparent)}
+.notice.success strong{color:var(--mint, #10b981)}
+.notice.success p{color:var(--text)}
 .walkthrough{background:color-mix(in srgb,var(--accent) 14%,var(--surface));border-color:var(--border)}
 .graph-node{background:var(--surface);color:var(--text)}
 .graph-node.selected{background:color-mix(in srgb,var(--accent) 18%,var(--surface));border-color:var(--accent);color:var(--text);box-shadow:none}
