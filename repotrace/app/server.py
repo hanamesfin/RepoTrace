@@ -330,6 +330,24 @@ def clone_may_use_remote_token(plan, state):
     return None
 
 
+def clone_may_use_token(plan, token):
+    """Ensure tokens are only supplied to trusted HTTPS remote hosts matching the token type."""
+    if plan.get('transport') != 'https' or not token:
+        return False
+    host = plan.get('host', '').lower()
+    is_github_host = host in _GITHUB_HOSTS
+    is_github_token = isinstance(token, str) and (token.startswith('ghp_') or token.startswith('github_pat_'))
+    if is_github_token and not is_github_host:
+        return False
+    if is_github_host:
+        return True
+    if 'gitlab' in host:
+        return not is_github_token
+    if 'dev.azure.com' in host or 'visualstudio.com' in host:
+        return not is_github_token
+    return False
+
+
 def perform_clone(home, url, kind, confirm, token=None, git_run=None):
     """Clone, or fetch --prune when the mirror folder is already a Git checkout.
 
@@ -341,6 +359,8 @@ def perform_clone(home, url, kind, confirm, token=None, git_run=None):
         raise ValueError('Confirm the folder shown on screen before cloning.')
     if plan['blocked']:
         raise ValueError(plan['dest'] + ' already exists and is not a Git clone. RepoTrace will not replace it.')
+    if not clone_may_use_token(plan, token):
+        token = None
     if token and any(token in str(part) for part in (plan['url'], plan['dest'])):
         raise ValueError('Refusing to put the token in the clone.')
     root = Path(home) / '.repotrace'
