@@ -1084,6 +1084,21 @@
       ev.preventDefault();
       clearTimeout(githubTimer);
       stepOne(currentBoot || root.RTLab);
+      return;
+    }
+    const openProj = ev.target.closest('[data-action="open-project"]');
+    if (openProj && (!root.RTLab || !root.RTLab.current || document.querySelector('.compact.picker'))) {
+      ev.preventDefault();
+      clearTimeout(githubTimer);
+      start(currentBoot || root.RTLab);
+      return;
+    }
+    const wsBtn = ev.target.closest('[data-action="workspaces"]');
+    if (wsBtn && (!root.RTLab || !root.RTLab.current || document.querySelector('.compact.picker'))) {
+      ev.preventDefault();
+      clearTimeout(githubTimer);
+      if (currentShowWorkspaces) currentShowWorkspaces();
+      return;
     }
   });
   root.RTPicker = {start, run};
